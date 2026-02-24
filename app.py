@@ -450,12 +450,51 @@ if st.session_state.results and st.session_state.step >= 2:
         colors = {'초반 집중형': '#e74c3c', '중반 집중형': '#f39c12', '후반 집중형': '#2ecc71'}
         xticks_idx = list(range(0, len(dates_list), max(1, len(dates_list)//8)))
 
+        # 1. MDD 음영 구간 표시
+        tqqq_prices = [h['tqqq_price'] for h in first] if 'tqqq_price' in first[0] else None
+        peak_val = first[0]['total_krw']
+        mdd_vals = []
+        peak_total = first[0]['total_krw']
+        for h in first:
+            if h['total_krw'] > peak_total:
+                peak_total = h['total_krw']
+            mdd_vals.append((h['total_krw'] - peak_total) / peak_total * 100)
+
+        y_min = min([min([h['total_krw'] for h in hist]) for hist in results.values()])
+        y_max = max([max([h['total_krw'] for h in hist]) for hist in results.values()])
+
+        # MDD 구간 색상 배경
+        for i, mdd_v in enumerate(mdd_vals):
+            if mdd_v <= -60:
+                ax.axvspan(i, i+1, alpha=0.15, color='#e74c3c', linewidth=0)
+            elif mdd_v <= -40:
+                ax.axvspan(i, i+1, alpha=0.10, color='#f39c12', linewidth=0)
+            elif mdd_v <= -20:
+                ax.axvspan(i, i+1, alpha=0.05, color='#f1c40f', linewidth=0)
+
+        # 범례용 더미 패치
+        from matplotlib.patches import Patch
+        mdd_legend = [
+            Patch(color='#e74c3c', alpha=0.4, label='MDD -60% 이하'),
+            Patch(color='#f39c12', alpha=0.4, label='MDD -40~60%'),
+            Patch(color='#f1c40f', alpha=0.3, label='MDD -20~40%'),
+        ]
+
         for name, history in results.items():
             totals = [h['total_krw'] for h in history]
             rate   = (totals[-1] / totals[0] - 1) * 100
-            ax.plot(range(len(dates_list)), totals,
+            line, = ax.plot(range(len(dates_list)), totals,
                     label=f'{name}  {totals[-1]:,.0f}원 ({rate:+.1f}%)',
                     color=colors[name], linewidth=2.5)
+
+            # 2. 매수 시점 표시
+            buy_log = st.session_state.results_stats[name]['buy_log'] if 'results_stats' in st.session_state else []
+            buy_dates = [b['date'] for b in buy_log]
+            buy_idx = [i for i, d in enumerate(dates_list) if d in buy_dates]
+            buy_vals = [totals[i] for i in buy_idx]
+            if buy_idx:
+                ax.scatter(buy_idx, buy_vals, color=colors[name],
+                          marker='^', s=30, alpha=0.6, zorder=5)
 
         hold = [h['hold_krw'] for h in first]
         hold_rate = (hold[-1] / hold[0] - 1) * 100
