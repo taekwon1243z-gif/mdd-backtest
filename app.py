@@ -405,7 +405,6 @@ if st.session_state.results and st.session_state.step >= 2:
 
         # QQQ, VIX 데이터 로드
         import pandas as pd
-        start_dt = dates_list[0] if 'dates_list' in dir() else st.session_state.start_date
         first = results[strategy_names[0]]
         dates_list = [h['date'] for h in first]
         start_dt = dates_list[0]
