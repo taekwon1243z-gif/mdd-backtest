@@ -365,7 +365,7 @@ style="color:#E1306C; text-decoration:none; font-weight:600;">@running_for_freed
 </div>
 """, unsafe_allow_html=True)
     st.markdown('---')
-    if False:
+
 
     st.divider()
     st.markdown('### 📬 투자 정보 & 업데이트 받기')
