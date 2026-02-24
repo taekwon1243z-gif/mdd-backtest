@@ -461,7 +461,7 @@ if st.session_state.results and st.session_state.step >= 2:
             rs    = gain / loss
             return 100 - (100 / (1 + rs))
 
-        fig, axes = plt.subplots(3, 1, figsize=(14, 14),
+        fig, axes = plt.subplots(3, 1, figsize=(12, 10),
                                   gridspec_kw={'height_ratios': [4, 1.5, 1.5]})
         fig.patch.set_facecolor('#1a1a2e')
         ax = axes[0]
@@ -611,7 +611,7 @@ if st.session_state.results and st.session_state.step >= 2:
             spine.set_edgecolor('#444')
         plt.tight_layout()
         st.pyplot(fig)
-        plt.close()
+        plt.close("all")
 
         # 1. 전략별 상세 요약 카드
         st.subheader('📊 전략별 상세')
