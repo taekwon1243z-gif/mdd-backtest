@@ -403,13 +403,51 @@ if st.session_state.results and st.session_state.step >= 2:
             hold_cagr = ((hold_krw / h[0]['total_krw']) ** (1/years) - 1) * 100 if years > 0 else 0
             st.caption(f'{seed_krw_val/10000:.0f}만원 → {hold_krw/10000:.0f}만원 ({years:.1f}년) | 연평균 {hold_cagr:.1f}%')
 
-        fig, ax = plt.subplots(figsize=(14, 6))
-        fig.patch.set_facecolor('#1a1a2e')
-        ax.set_facecolor('#16213e')
-        colors = {'초반 집중형': '#e74c3c', '중반 집중형': '#f39c12', '후반 집중형': '#2ecc71'}
-
+        # QQQ, VIX 데이터 로드
+        import pandas as pd
+        start_dt = dates_list[0] if 'dates_list' in dir() else st.session_state.start_date
         first = results[strategy_names[0]]
         dates_list = [h['date'] for h in first]
+        start_dt = dates_list[0]
+        end_dt   = dates_list[-1]
+
+        @st.cache_data(show_spinner=False)
+        def load_extra(start, end):
+            import time
+            for _ in range(3):
+                try:
+                    qqq = yf.download('QQQ', start=start, end=end, progress=False, auto_adjust=False)['Close'].dropna().squeeze()
+                    vix = yf.download('^VIX', start=start, end=end, progress=False, auto_adjust=False)['Close'].dropna().squeeze()
+                    return qqq, vix
+                except:
+                    time.sleep(2)
+            return None, None
+
+        qqq_data, vix_data = load_extra(start_dt, end_dt)
+
+        # RSI 계산 함수
+        def calc_rsi(series, period=14):
+            delta = series.diff()
+            gain  = delta.clip(lower=0).rolling(period).mean()
+            loss  = (-delta.clip(upper=0)).rolling(period).mean()
+            rs    = gain / loss
+            return 100 - (100 / (1 + rs))
+
+        fig, axes = plt.subplots(3, 1, figsize=(14, 14),
+                                  gridspec_kw={'height_ratios': [4, 1.5, 1.5]})
+        fig.patch.set_facecolor('#1a1a2e')
+        ax = axes[0]
+        ax_rsi = axes[1]
+        ax_vix = axes[2]
+        for a in axes:
+            a.set_facecolor('#16213e')
+            a.tick_params(colors='white')
+            a.spines['bottom'].set_color('#444')
+            a.spines['top'].set_color('#444')
+            a.spines['left'].set_color('#444')
+            a.spines['right'].set_color('#444')
+
+        colors = {'초반 집중형': '#e74c3c', '중반 집중형': '#f39c12', '후반 집중형': '#2ecc71'}
         xticks_idx = list(range(0, len(dates_list), max(1, len(dates_list)//8)))
 
         for name, history in results.items():
@@ -425,11 +463,30 @@ if st.session_state.results and st.session_state.step >= 2:
                 label=f'단순 홀딩  {hold[-1]:,.0f}원 ({hold_rate:+.1f}%)',
                 color='#74b9ff', linewidth=2, linestyle='--', alpha=0.8)
 
+        # QQQ 오른쪽 축
+        if qqq_data is not None and len(qqq_data) > 0:
+            qqq_dates = [str(d.date()) for d in qqq_data.index]
+            qqq_vals  = qqq_data.values
+            qqq_idx   = []
+            qqq_prices = []
+            for i, d in enumerate(dates_list):
+                if d in qqq_dates:
+                    idx = qqq_dates.index(d)
+                    qqq_idx.append(i)
+                    qqq_prices.append(qqq_vals[idx])
+            if qqq_prices:
+                ax2 = ax.twinx()
+                ax2.set_facecolor('#16213e')
+                ax2.plot(qqq_idx, qqq_prices, color='#a29bfe', linewidth=1.5,
+                         linestyle=':', alpha=0.8, label=f'QQQ  ${qqq_prices[-1]:.1f}')
+                ax2.set_ylabel('QQQ ($)', color='#a29bfe')
+                ax2.tick_params(colors='#a29bfe')
+                ax2.legend(loc='lower right', facecolor='#0f3460', labelcolor='white', edgecolor='#444')
+
         ax.set_xticks(xticks_idx)
         ax.set_xticklabels([dates_list[i][:7] for i in xticks_idx], rotation=45, color='white')
-        ax.yaxis.set_major_formatter(mticker.FuncFormatter(lambda x, _: f'{x/10000:.0f}만'))
         ax.tick_params(colors='white')
-        ax.set_ylabel('자산 (만원)', color='white')
+        ax.set_ylabel('자산 (원)', color='white')
         # y축 한글 포맷
         def krw_fmt(x, pos):
             if x >= 1e8:
@@ -439,6 +496,64 @@ if st.session_state.results and st.session_state.step >= 2:
             return f'{x:.0f}원'
         ax.yaxis.set_major_formatter(mticker.FuncFormatter(krw_fmt))
         ax.legend(facecolor='#0f3460', labelcolor='white', edgecolor='#444')
+
+        # RSI 차트
+        if qqq_data is not None and len(qqq_data) > 0:
+            rsi = calc_rsi(qqq_data)
+            rsi_dates = [str(d.date()) for d in rsi.index]
+            rsi_idx, rsi_vals = [], []
+            for i, d in enumerate(dates_list):
+                if d in rsi_dates:
+                    v = rsi.iloc[rsi_dates.index(d)]
+                    if not pd.isna(v):
+                        rsi_idx.append(i)
+                        rsi_vals.append(v)
+            if rsi_vals:
+                ax_rsi.plot(rsi_idx, rsi_vals, color='#fdcb6e', linewidth=1.5)
+                ax_rsi.axhline(70, color='#e17055', linestyle='--', alpha=0.7, linewidth=1)
+                ax_rsi.axhline(30, color='#00b894', linestyle='--', alpha=0.7, linewidth=1)
+                ax_rsi.fill_between(rsi_idx, rsi_vals, 30,
+                                    where=[v < 30 for v in rsi_vals],
+                                    color='#00b894', alpha=0.3)
+                ax_rsi.fill_between(rsi_idx, rsi_vals, 70,
+                                    where=[v > 70 for v in rsi_vals],
+                                    color='#e17055', alpha=0.3)
+                ax_rsi.set_xlim(0, len(dates_list)-1)
+                ax_rsi.set_ylim(0, 100)
+                ax_rsi.set_xticks(xticks_idx)
+                ax_rsi.set_xticklabels([dates_list[i][:7] for i in xticks_idx], rotation=45, color='white')
+                ax_rsi.set_ylabel('RSI (QQQ)', color='white')
+                ax_rsi.text(0.01, 0.85, '과매수 (70)', transform=ax_rsi.transAxes,
+                            color='#e17055', fontsize=8)
+                ax_rsi.text(0.01, 0.05, '과매도 (30)', transform=ax_rsi.transAxes,
+                            color='#00b894', fontsize=8)
+
+        # VIX 차트
+        if vix_data is not None and len(vix_data) > 0:
+            vix_dates = [str(d.date()) for d in vix_data.index]
+            vix_idx, vix_vals = [], []
+            for i, d in enumerate(dates_list):
+                if d in vix_dates:
+                    v = vix_data.iloc[vix_dates.index(d)]
+                    if not pd.isna(v):
+                        vix_idx.append(i)
+                        vix_vals.append(v)
+            if vix_vals:
+                ax_vix.plot(vix_idx, vix_vals, color='#fd79a8', linewidth=1.5)
+                ax_vix.axhline(30, color='#e17055', linestyle='--', alpha=0.7, linewidth=1)
+                ax_vix.fill_between(vix_idx, vix_vals, 30,
+                                    where=[v > 30 for v in vix_vals],
+                                    color='#e17055', alpha=0.3)
+                ax_vix.set_xlim(0, len(dates_list)-1)
+                ax_vix.set_xticks(xticks_idx)
+                ax_vix.set_xticklabels([dates_list[i][:7] for i in xticks_idx], rotation=45, color='white')
+                ax_vix.set_ylabel('VIX', color='white')
+                ax_vix.text(0.01, 0.85, '공포 구간 (30+)', transform=ax_vix.transAxes,
+                            color='#e17055', fontsize=8)
+                ax_vix.text(0.99, 0.05, '⚠️ VIX는 S&P500 기반 공포지수로 참고용입니다',
+                            transform=ax_vix.transAxes, color='#aaa', fontsize=8, ha='right')
+
+        plt.tight_layout()
         ax.grid(True, alpha=0.2, color='white')
         for spine in ax.spines.values():
             spine.set_edgecolor('#444')
