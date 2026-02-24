@@ -450,37 +450,7 @@ if st.session_state.results and st.session_state.step >= 2:
         colors = {'초반 집중형': '#e74c3c', '중반 집중형': '#f39c12', '후반 집중형': '#2ecc71'}
         xticks_idx = list(range(0, len(dates_list), max(1, len(dates_list)//8)))
 
-        # 1. MDD 음영 구간 표시
-        tqqq_prices = [h['tqqq_price'] for h in first] if 'tqqq_price' in first[0] else None
-        peak_val = first[0]['total_krw']
-        mdd_vals = []
-        peak_total = first[0]['total_krw']
-        for h in first:
-            if h['total_krw'] > peak_total:
-                peak_total = h['total_krw']
-            mdd_vals.append((h['total_krw'] - peak_total) / peak_total * 100)
-
-        y_min = min([min([h['total_krw'] for h in hist]) for hist in results.values()])
-        y_max = max([max([h['total_krw'] for h in hist]) for hist in results.values()])
-
-        # MDD 구간 색상 배경
-        for i, mdd_v in enumerate(mdd_vals):
-            if mdd_v <= -60:
-                ax.axvspan(i, i+1, alpha=0.15, color='#e74c3c', linewidth=0)
-            elif mdd_v <= -40:
-                ax.axvspan(i, i+1, alpha=0.10, color='#f39c12', linewidth=0)
-            elif mdd_v <= -20:
-                ax.axvspan(i, i+1, alpha=0.05, color='#f1c40f', linewidth=0)
-
-        # 범례용 더미 패치
-        from matplotlib.patches import Patch
-        mdd_legend = [
-            Patch(color='#e74c3c', alpha=0.4, label='MDD -60% 이하'),
-            Patch(color='#f39c12', alpha=0.4, label='MDD -40~60%'),
-            Patch(color='#f1c40f', alpha=0.3, label='MDD -20~40%'),
-        ]
-
-        for name, history in results.items():
+                for name, history in results.items():
             totals = [h['total_krw'] for h in history]
             rate   = (totals[-1] / totals[0] - 1) * 100
             line, = ax.plot(range(len(dates_list)), totals,
