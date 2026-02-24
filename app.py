@@ -586,32 +586,87 @@ if st.session_state.results and st.session_state.step >= 2:
         st.pyplot(fig)
         plt.close()
 
-        st.subheader('전략별 상세')
+        # 1. 전략별 상세 요약 카드
+        st.subheader('📊 전략별 상세')
         for name in strategy_names:
             h = results[name]; s = all_stats[name]
             worst_mdd = min(x['mdd'] for x in h)
             max_krw   = max(x['total_krw'] for x in h)
-            min_krw   = min(x['total_krw'] for x in h)
-            with st.expander(f'{name} 상세보기'):
-                c1, c2, c3, c4 = st.columns(4)
-                c1.metric('최고 자산', f'{max_krw:,.0f}원')
-                c2.metric('최저 자산', f'{min_krw:,.0f}원')
-                c3.metric('TQQQ 최대 낙폭', f'{worst_mdd:.1f}%')
-                c4.metric('총 거래 횟수', f'{s["total_tx"]}회')
+            final_krw = h[-1]['total_krw']
+            init_krw  = h[0]['total_krw']
+            years     = len(h) / 252
+            cagr      = ((final_krw / init_krw) ** (1/years) - 1) * 100 if years > 0 else 0
 
+            with st.expander(f'{name}  |  최종 {final_krw/10000:.0f}만원  |  연평균 {cagr:.1f}%'):
+                # 요약 카드
+                c1, c2, c3, c4 = st.columns(4)
+                c1.metric('최종 자산', f'{final_krw/10000:.0f}만원', f'{(final_krw/init_krw-1)*100:+.1f}%')
+                c2.metric('연평균 수익률', f'{cagr:.1f}%')
+                c3.metric('TQQQ 최대 낙폭', f'{worst_mdd:.1f}%')
+                c4.metric('총 매수 횟수', f'{s["buy_count"] + s["vault_buy_count"]}회')
+
+                # 2. 매수 내역 표 — 핵심 컬럼만, 색상 강조
                 if s['buy_log']:
-                    st.write('**최근 매수 내역**')
-                    df = pd.DataFrame(s['buy_log'][-10:])
-                    df = df[['date','mdd','level','shares','cost_krw','source']]
-                    df.columns = ['날짜','낙폭(%)','매수구간(%)','매수주수','투입금액(원)','출처']
-                    st.dataframe(df, use_container_width=True)
-                    st.caption('💡 낙폭이 해당 구간에 도달할 때마다 현금풀 또는 금고에서 자동으로 매수한 내역이에요.')
+                    st.write('**💰 매수 내역**')
+                    df = pd.DataFrame(s['buy_log'])
+                    df = df[['date','mdd','cost_krw','source']]
+                    df.columns = ['날짜','낙폭(%)','투입금액(원)','출처']
+                    df['낙폭(%)'] = df['낙폭(%)'].apply(lambda x: f'{x:.1f}%')
+                    df['투입금액(원)'] = df['투입금액(원)'].apply(lambda x: f'{int(x):,}원')
+
+                    def highlight_source(row):
+                        if row['출처'] == '금고':
+                            return ['background-color: rgba(231,76,60,0.2)']*len(row)
+                        return ['background-color: rgba(46,204,113,0.15)']*len(row)
+
+                    st.dataframe(
+                        df.style.apply(highlight_source, axis=1),
+                        use_container_width=True, height=250
+                    )
+                    st.caption('🟢 현금풀 매수  🔴 금고 매수')
+
                 if s['rebalance_log']:
-                    st.write('**최근 리밸런싱 내역**')
-                    df = pd.DataFrame(s['rebalance_log'][-10:])
-                    df.columns = ['날짜','TQQQ 가격($)','매도/매수','거래주수','거래후 보유주수']
-                    st.dataframe(df, use_container_width=True)
-                    st.caption('💡 전고점 회복 시 TQQQ 70% / 현금 30% 비율로 자동 재조정한 내역이에요. 폭락 때 산 주식을 고점에서 일부 매도해 이익을 실현하고 다음 폭락을 대비해요.')
+                    st.write('**🔄 리밸런싱 내역**')
+                    df_r = pd.DataFrame(s['rebalance_log'])
+                    df_r = df_r[['date','action','shares_diff']]
+                    df_r.columns = ['날짜','구분','거래주수']
+                    st.dataframe(df_r, use_container_width=True, height=200)
+                    st.caption('💡 전고점 회복 시 TQQQ 70% / 현금 30% 비율로 자동 재조정해요.')
+
+        # 3. 연도별 수익률 표 색상 강조
+        st.subheader('📅 연도별 수익률')
+        years_set = sorted(set([h['date'][:4] for h in first]))
+        year_data = []
+        for year in years_set:
+            row = {'연도': year}
+            for name, history in results.items():
+                year_hist = [h for h in history if h['date'][:4] == year]
+                if year_hist:
+                    s_val = year_hist[0]['total_krw']
+                    e_val = year_hist[-1]['total_krw']
+                    row[name] = (e_val / s_val - 1) * 100
+                else:
+                    row[name] = None
+            hold_year = [h for h in first if h['date'][:4] == year]
+            if hold_year:
+                row['단순홀딩'] = (hold_year[-1]['hold_krw'] / hold_year[0]['hold_krw'] - 1) * 100
+            year_data.append(row)
+
+        year_df = pd.DataFrame(year_data)
+
+        def color_rate(val):
+            if val is None: return ''
+            color = 'rgba(46,204,113,0.3)' if val >= 0 else 'rgba(231,76,60,0.3)'
+            return f'background-color: {color}'
+
+        def fmt_rate(val):
+            if val is None: return '-'
+            return f'{val:+.1f}%'
+
+        numeric_cols = [c for c in year_df.columns if c != '연도']
+        styled = year_df.style            .applymap(color_rate, subset=numeric_cols)            .format(fmt_rate, subset=numeric_cols)
+        st.dataframe(styled, use_container_width=True, hide_index=True)
+        st.caption('💡 초록: 수익 / 빨강: 손실 | 해당 연도 첫 거래일 대비 마지막 거래일 기준')
 
         st.subheader('전략 선택')
         selected = st.radio('마음에 드는 전략을 선택하세요', strategy_names, horizontal=True)
