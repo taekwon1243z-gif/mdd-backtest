@@ -5,9 +5,21 @@ import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import matplotlib.ticker as mticker
+import matplotlib.font_manager as fm
+import urllib.request, os
+
+def setup_korean_font():
+    font_path = '/tmp/NanumGothic.ttf'
+    if not os.path.exists(font_path):
+        url = 'https://github.com/google/fonts/raw/main/ofl/nanumgothic/NanumGothic-Regular.ttf'
+        urllib.request.urlretrieve(url, font_path)
+    fm.fontManager.addfont(font_path)
+    plt.rcParams['font.family'] = fm.FontProperties(fname=font_path).get_name()
+
+setup_korean_font()
 import pandas as pd
 
-plt.rcParams['font.family'] = 'AppleGothic'
+
 plt.rcParams['axes.unicode_minus'] = False
 
 st.set_page_config(page_title='MDD 방어법 백테스터', page_icon='📈', layout='wide')
@@ -380,14 +392,16 @@ if st.session_state.results and st.session_state.step >= 2:
             gain  = final_krw - initial_krw
             with cols[i]:
                 st.metric(name, f'{final_krw:,.0f}원', f'{rate:+.1f}%')
-                st.caption(f'{seed_krw_val/10000:.0f}만원 → {final_krw/10000:.0f}만원 ({years:.1f}년)')
+                cagr = ((final_krw / initial_krw) ** (1/years) - 1) * 100 if years > 0 else 0
+                st.caption(f'{seed_krw_val/10000:.0f}만원 → {final_krw/10000:.0f}만원 ({years:.1f}년) | 연평균 {cagr:.1f}%')
         with cols[3]:
             h = results[strategy_names[0]]
             hold_krw  = h[-1]['hold_krw']
             hold_rate = (hold_krw / h[0]['total_krw'] - 1) * 100
             years = len(h) / 252
             st.metric('단순 홀딩', f'{hold_krw:,.0f}원', f'{hold_rate:+.1f}%')
-            st.caption(f'{seed_krw_val/10000:.0f}만원 → {hold_krw/10000:.0f}만원 ({years:.1f}년)')
+            hold_cagr = ((hold_krw / h[0]['total_krw']) ** (1/years) - 1) * 100 if years > 0 else 0
+            st.caption(f'{seed_krw_val/10000:.0f}만원 → {hold_krw/10000:.0f}만원 ({years:.1f}년) | 연평균 {hold_cagr:.1f}%')
 
         fig, ax = plt.subplots(figsize=(14, 6))
         fig.patch.set_facecolor('#1a1a2e')
@@ -416,6 +430,14 @@ if st.session_state.results and st.session_state.step >= 2:
         ax.yaxis.set_major_formatter(mticker.FuncFormatter(lambda x, _: f'{x/10000:.0f}만'))
         ax.tick_params(colors='white')
         ax.set_ylabel('자산 (만원)', color='white')
+        # y축 한글 포맷
+        def krw_fmt(x, pos):
+            if x >= 1e8:
+                return f'{x/1e8:.0f}억원'
+            elif x >= 1e4:
+                return f'{x/1e4:.0f}만원'
+            return f'{x:.0f}원'
+        ax.yaxis.set_major_formatter(mticker.FuncFormatter(krw_fmt))
         ax.legend(facecolor='#0f3460', labelcolor='white', edgecolor='#444')
         ax.grid(True, alpha=0.2, color='white')
         for spine in ax.spines.values():
