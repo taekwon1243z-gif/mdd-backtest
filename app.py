@@ -450,21 +450,21 @@ if st.session_state.results and st.session_state.step >= 2:
         colors = {'초반 집중형': '#e74c3c', '중반 집중형': '#f39c12', '후반 집중형': '#2ecc71'}
         xticks_idx = list(range(0, len(dates_list), max(1, len(dates_list)//8)))
 
-                for name, history in results.items():
+        for name, history in results.items():
             totals = [h['total_krw'] for h in history]
             rate   = (totals[-1] / totals[0] - 1) * 100
-            line, = ax.plot(range(len(dates_list)), totals,
+            ax.plot(range(len(dates_list)), totals,
                     label=f'{name}  {totals[-1]:,.0f}원 ({rate:+.1f}%)',
                     color=colors[name], linewidth=2.5)
 
-            # 2. 매수 시점 표시
+            # 매수 시점 표시
             buy_log = st.session_state.results_stats[name]['buy_log'] if 'results_stats' in st.session_state else []
             buy_dates = [b['date'] for b in buy_log]
             buy_idx = [i for i, d in enumerate(dates_list) if d in buy_dates]
             buy_vals = [totals[i] for i in buy_idx]
             if buy_idx:
                 ax.scatter(buy_idx, buy_vals, color=colors[name],
-                          marker='^', s=30, alpha=0.6, zorder=5)
+                           marker='^', s=30, alpha=0.6, zorder=5)
 
         hold = [h['hold_krw'] for h in first]
         hold_rate = (hold[-1] / hold[0] - 1) * 100
