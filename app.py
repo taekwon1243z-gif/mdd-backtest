@@ -367,6 +367,8 @@ with st.expander('① 기본 설정', expanded=st.session_state.step == 1):
                 st.session_state.use_vault    = use_vault
                 st.session_state.vault_krw    = vault_krw
                 st.session_state.vault_trigger = vault_trigger
+                st.session_state.fx_dict       = fx_dict
+                st.session_state.start_fx      = fx_dict.get(dates_list[0], 1350)
                 st.session_state.tqqq         = tqqq
                 st.session_state.step         = 2
                 st.rerun()
@@ -462,25 +464,39 @@ if st.session_state.results and st.session_state.step >= 2:
                 label=f'단순 홀딩  {hold[-1]:,.0f}원 ({hold_rate:+.1f}%)',
                 color='#74b9ff', linewidth=2, linestyle='--', alpha=0.8)
 
-        # QQQ 오른쪽 축
+        # QQQ 동일 시드 원화 기준으로 변환
         if qqq_data is not None and len(qqq_data) > 0:
             qqq_dates = [str(d.date()) for d in qqq_data.index]
             qqq_vals  = qqq_data.values
-            qqq_idx   = []
-            qqq_prices = []
+            # 첫날 QQQ 가격으로 시드 전액 매수한 것처럼 계산
+            first_qqq_price = None
+            first_fx = None
             for i, d in enumerate(dates_list):
                 if d in qqq_dates:
                     idx = qqq_dates.index(d)
-                    qqq_idx.append(i)
-                    qqq_prices.append(qqq_vals[idx])
-            if qqq_prices:
-                ax2 = ax.twinx()
-                ax2.set_facecolor('#16213e')
-                ax2.plot(qqq_idx, qqq_prices, color='#a29bfe', linewidth=1.5,
-                         linestyle=':', alpha=0.8, label=f'QQQ  ${qqq_prices[-1]:.1f}')
-                ax2.set_ylabel('QQQ ($)', color='#a29bfe')
-                ax2.tick_params(colors='#a29bfe')
-                ax2.legend(loc='lower right', facecolor='#0f3460', labelcolor='white', edgecolor='#444')
+                    first_qqq_price = float(qqq_vals[idx])
+                    first_fx = st.session_state.get('start_fx', 1350)
+                    break
+            if first_qqq_price:
+                qqq_shares = (st.session_state.seed_krw / first_fx) / first_qqq_price
+                qqq_idx, qqq_krw = [], []
+                fx_dict_local = st.session_state.get('fx_dict', {})
+                fx_sorted_local = sorted(fx_dict_local.keys())
+                for i, d in enumerate(dates_list):
+                    if d in qqq_dates:
+                        idx = qqq_dates.index(d)
+                        price = float(qqq_vals[idx])
+                        fx = fx_dict_local.get(d, 1350)
+                        if not fx and fx_sorted_local:
+                            past = [x for x in fx_sorted_local if x <= d]
+                            fx = fx_dict_local[past[-1]] if past else 1350
+                        qqq_idx.append(i)
+                        qqq_krw.append(qqq_shares * price * fx)
+                if qqq_krw:
+                    qqq_rate = (qqq_krw[-1] / qqq_krw[0] - 1) * 100
+                    ax.plot(qqq_idx, qqq_krw, color='#a29bfe', linewidth=1.5,
+                            linestyle=':', alpha=0.9,
+                            label=f'QQQ 100% 홀딩  {qqq_krw[-1]:,.0f}원 ({qqq_rate:+.1f}%)')
 
         ax.set_xticks(xticks_idx)
         ax.set_xticklabels([dates_list[i][:7] for i in xticks_idx], rotation=45, color='white')
