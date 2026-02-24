@@ -39,8 +39,8 @@ def load_data(start, end):
     import time
     for attempt in range(3):
         try:
-            tqqq = yf.download('TQQQ', start=start, end=end, progress=False, auto_adjust=True)
-            fx   = yf.download('USDKRW=X', start=start, end=end, progress=False, auto_adjust=True)
+            tqqq = yf.download('TQQQ', start=start, end=end, progress=False, auto_adjust=False)
+            fx   = yf.download('USDKRW=X', start=start, end=end, progress=False, auto_adjust=False)
             if 'Close' in tqqq.columns:
                 tqqq = tqqq['Close'].dropna().squeeze()
             else:
