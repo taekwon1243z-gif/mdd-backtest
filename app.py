@@ -83,7 +83,8 @@ def run_backtest(buy_table, tqqq, fx_dict, fx_sorted, seed_usd, use_vault, vault
     peak = prices[0]
     bought_levels = set(); vault_levels = set()
     total_cash_pool = cash; total_vault = vault
-    hold_shares = math.floor(seed_usd / prices[0])
+    total_seed_usd = seed_usd + vault_usd  # 단순홀딩은 시드+금고 합산으로 공정 비교
+    hold_shares = math.floor(total_seed_usd / prices[0])
     history = []; buy_log = []; rebalance_log = []
     buy_count = 0; vault_buy_count = 0; rebalance_count = 0
 
@@ -486,7 +487,8 @@ if st.session_state.results and st.session_state.step >= 2:
                     first_fx = st.session_state.get('start_fx', 1350)
                     break
             if first_qqq_price:
-                qqq_shares = (st.session_state.seed_krw / first_fx) / first_qqq_price
+                total_krw_for_qqq = st.session_state.seed_krw + st.session_state.get('vault_krw', 0)
+                qqq_shares = (total_krw_for_qqq / first_fx) / first_qqq_price
                 qqq_idx, qqq_krw = [], []
                 fx_dict_local = st.session_state.get('fx_dict', {})
                 fx_sorted_local = sorted(fx_dict_local.keys())
