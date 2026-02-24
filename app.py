@@ -162,7 +162,7 @@ if 'selected_strategy' not in st.session_state:
     st.session_state.selected_strategy = None
 
 # ── 전략 소개 ──
-with st.expander('💡 이 전략이 뭔가요? (처음이시면 꼭 읽어보세요)', expanded=True):
+with st.expander('💡 이 전략이 뭔가요? (처음이시면 꼭 읽어보세요)', expanded=False):
     st.markdown("""
 ## TQQQ Adaptive Defense Strategy
 *나스닥 3배 레버리지 ETF의 구조적 하락을 기회로 전환하는 동적 자산배분 모델*
