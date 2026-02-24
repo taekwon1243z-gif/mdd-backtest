@@ -368,7 +368,6 @@ with st.expander('① 기본 설정', expanded=st.session_state.step == 1):
                 st.session_state.vault_krw    = vault_krw
                 st.session_state.vault_trigger = vault_trigger
                 st.session_state.fx_dict       = fx_dict
-                st.session_state.start_fx      = fx_dict.get(dates_list[0], 1350)
                 st.session_state.tqqq         = tqqq
                 st.session_state.step         = 2
                 st.rerun()
