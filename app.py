@@ -24,9 +24,26 @@ def make_vault_table(trigger):
 
 @st.cache_data(show_spinner=False)
 def load_data(start, end):
-    tqqq = yf.download('TQQQ', start=start, end=end, progress=False)['Close'].dropna().squeeze()
-    fx   = yf.download('USDKRW=X', start=start, end=end, progress=False)['Close'].dropna().squeeze()
-    return tqqq, fx
+    import time
+    for attempt in range(3):
+        try:
+            tqqq = yf.download('TQQQ', start=start, end=end, progress=False, auto_adjust=True)
+            fx   = yf.download('USDKRW=X', start=start, end=end, progress=False, auto_adjust=True)
+            if 'Close' in tqqq.columns:
+                tqqq = tqqq['Close'].dropna().squeeze()
+            else:
+                tqqq = tqqq.iloc[:, 0].dropna().squeeze()
+            if 'Close' in fx.columns:
+                fx = fx['Close'].dropna().squeeze()
+            else:
+                fx = fx.iloc[:, 0].dropna().squeeze()
+            if len(tqqq) > 0 and len(fx) > 0:
+                return tqqq, fx
+        except Exception as e:
+            pass
+        time.sleep(2)
+    st.error('데이터를 불러오지 못했어요. 잠시 후 다시 시도해주세요.')
+    st.stop()
 
 def get_fx(fx_dict, fx_sorted, date_str):
     if date_str in fx_dict:
