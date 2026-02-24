@@ -31,7 +31,7 @@ STRATEGIES = {
 }
 
 def make_vault_table(trigger):
-    levels = [trigger - i*5 for i in range(6)]
+    levels = [-(trigger + i*5) for i in range(6)]
     return list(zip(levels, [0.20,0.20,0.20,0.20,0.10,0.10]))
 
 @st.cache_data(show_spinner=False)
