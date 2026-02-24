@@ -3,3 +3,7 @@ base = "light"
 
 [client]
 toolbarMode = "minimal"
+showSidebarNavigation = false
+
+[browser]
+gatherUsageStats = false

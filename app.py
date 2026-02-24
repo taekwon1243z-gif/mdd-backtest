@@ -151,7 +151,28 @@ def run_backtest(buy_table, tqqq, fx_dict, fx_sorted, seed_usd, use_vault, vault
 
 # ── UI 시작 ──────────────────────────────────────────
 
-st.title('📈 MDD 방어법 백테스터')
+# 다크모드 토글
+if 'dark_mode' not in st.session_state:
+    st.session_state.dark_mode = False
+
+col_title, col_dark = st.columns([8, 1])
+with col_title:
+    st.title('📈 MDD 방어법 백테스터')
+with col_dark:
+    st.session_state.dark_mode = st.toggle('🌙', value=st.session_state.dark_mode)
+
+if st.session_state.dark_mode:
+    st.markdown("""
+    <style>
+    .stApp { background-color: #0e1117; color: #fafafa; }
+    .stMarkdown, .stText, p, h1, h2, h3, h4, h5, h6, li { color: #fafafa !important; }
+    .stExpander { background-color: #1a1f2e; border: 1px solid #333; }
+    .stDataFrame { background-color: #1a1f2e; }
+    .stMetric { background-color: #1a1f2e; padding: 8px; border-radius: 8px; }
+    .stSelectbox > div, .stNumberInput > div { background-color: #1a1f2e; }
+    div[data-testid="stExpander"] { background-color: #1a1f2e; }
+    </style>
+    """, unsafe_allow_html=True)
 st.caption('TQQQ 폭락 구간 분할매수 전략 시뮬레이터')
 
 if 'step' not in st.session_state:
