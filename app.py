@@ -163,121 +163,209 @@ if 'selected_strategy' not in st.session_state:
 
 # ── 전략 소개 ──
 with st.expander('💡 이 전략이 뭔가요? (처음이시면 꼭 읽어보세요)', expanded=True):
-    st.markdown('''
-# 📖 MDD 방어법 — 폭락을 기회로 바꾸는 투자 전략
+    st.markdown("""
+<div style="font-family: 'Noto Serif KR', Georgia, serif; line-height: 2.0; color: #1a1a1a; max-width: 860px; margin: 0 auto;">
 
----
+<h2 style="font-size:1.5rem; font-weight:700; letter-spacing:-0.5px; margin-bottom:0.2rem;">
+TQQQ Adaptive Defense Strategy
+</h2>
+<p style="color:#888; font-size:0.85rem; margin-top:0; margin-bottom:2rem; font-style:italic;">
+나스닥 3배 레버리지 ETF의 구조적 하락을 기회로 전환하는 동적 자산배분 모델
+</p>
 
-## 🧭 이 전략을 만든 이유 — 장투는 심플해야 한다
+<hr style="border:none; border-top:1px solid #e0e0e0; margin: 1.5rem 0;">
 
-투자를 오래 지속하려면 **지치지 않아야 해요.**
+<h3 style="font-size:1.05rem; font-weight:700; margin-top:1.8rem; color:#111;">들어가며</h3>
+<p>
+주식 시장에서 장기투자가 실패하는 이유는 대부분 수익률이 아니라 심리에 있다.
+2002년 노벨경제학상을 수상한 대니얼 카너먼은 인간이 동일한 크기의 이익보다
+손실을 약 2.5배 더 고통스럽게 인식한다는 것을 실증했다.
+이 비대칭적 고통이 하락장에서의 패닉셀을 유발하고, 장기복리의 기회를 스스로 끊어낸다.
+</p>
+<p>
+이 전략은 그 관찰에서 출발했다.
+어떻게 하면 인간의 손실 회피 본능을 시스템으로 대체할 수 있을까.
+감정이 아닌 구조로 하락장을 버티고, 오히려 기회로 전환할 수 있을까.
+</p>
 
-매일 기업 실적을 분석하고, 산업 트렌드를 공부하고, 뉴스에 반응해 잦은 트레이딩을 하다 보면
-3년, 5년을 버티는 게 현실적으로 어려워요.
-그렇게 지쳐서 포기하면 복리 수익을 챙길 기회를 잃는 거예요.
+<hr style="border:none; border-top:1px solid #e0e0e0; margin: 1.5rem 0;">
 
-> **"심플할수록 오래 간다. 오래 갈수록 복리가 커진다."**
+<h3 style="font-size:1.05rem; font-weight:700; margin-top:1.8rem; color:#111;">왜 나스닥인가</h3>
+<p>
+미국 기술주 중심의 나스닥 100은 단순한 주가지수가 아니다.
+현재 글로벌 경제의 인프라를 구성하는 기업들의 집합체다.
+애플의 생태계, 엔비디아의 AI 반도체, 마이크로소프트의 클라우드가 무너지지 않는 한
+이 지수는 우상향한다는 것이 본 전략의 대전제다.
+</p>
+<p>
+역설적으로, 만약 나스닥이 장기 우상향하지 못한다면 다른 어떤 자산도 안전하지 않다.
+그 전제가 무너지는 세계는 투자 전략의 문제가 아니라 문명의 문제다.
+물론 고금리 장기화, 반독점 규제, 지정학적 리스크 등이 나스닥의 밸류에이션을 압박할 수 있다.
+본 전략은 그 리스크를 부정하지 않는다.
+다만 확률적으로 우상향에 베팅하되, 하락 시 시스템이 자동으로 대응하도록 설계함으로써 불확실성을 관리한다.
+</p>
 
-그래서 이 전략은 종목 분석이 필요 없는 **지수 추종 ETF**를 선택했어요.
-나스닥100은 애플, 마이크로소프트, 엔비디아 등 미국 최고 기술 기업 100개를 담고 있어요.
-개별 기업이 망해도 지수는 살아남고, 역사적으로 항상 우상향했어요.
+<hr style="border:none; border-top:1px solid #e0e0e0; margin: 1.5rem 0;">
 
-그리고 규칙을 미리 정해놨어요.
-"전고점 대비 -X% 빠지면 Y만큼 산다."
-이 규칙이 있으면 폭락장에서 패닉셀 하지 않고, 오히려 기계적으로 매수할 수 있어요.
-감정이 아니라 시스템이 투자하는 거예요.
+<h3 style="font-size:1.05rem; font-weight:700; margin-top:1.8rem; color:#111;">왜 3배 레버리지인가</h3>
+<p>
+현대 시장은 두 가지 구조적 변화를 겪고 있다.
+</p>
+<p>
+하나는 알고리즘 매매의 확산이다. 특정 지지선이 붕괴될 때 기계적 손절 물량이
+연쇄적으로 출회되면서 하락의 기울기가 과거보다 가팔라졌다.
+2020년 코로나 폭락이 단 33일 만에 -34%를 기록한 것은 우연이 아니다.
+</p>
+<p>
+다른 하나는 정책적 유동성의 비대칭성이다. 각국 중앙은행은 위기 시 즉각적인
+유동성 공급으로 대응하는 이른바 'Fed Put' 구조를 사실상 제도화했다.
+그 결과 하락은 가팔라졌고, 반등은 빨라졌다.
+</p>
 
----
+<table style="width:100%; border-collapse:collapse; margin: 1.2rem 0; font-size:0.9rem;">
+  <thead>
+    <tr style="background:#f5f5f5;">
+      <th style="padding:8px 12px; text-align:left; border-bottom:2px solid #ddd;">폭락 사건</th>
+      <th style="padding:8px 12px; text-align:center; border-bottom:2px solid #ddd;">최대 낙폭</th>
+      <th style="padding:8px 12px; text-align:center; border-bottom:2px solid #ddd;">회복 기간</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr><td style="padding:8px 12px; border-bottom:1px solid #eee;">2000년 닷컴버블</td><td style="text-align:center; padding:8px 12px; border-bottom:1px solid #eee; color:#e74c3c;">-83%</td><td style="text-align:center; padding:8px 12px; border-bottom:1px solid #eee;">약 15년</td></tr>
+    <tr><td style="padding:8px 12px; border-bottom:1px solid #eee;">2008년 금융위기</td><td style="text-align:center; padding:8px 12px; border-bottom:1px solid #eee; color:#e74c3c;">-54%</td><td style="text-align:center; padding:8px 12px; border-bottom:1px solid #eee;">약 4년</td></tr>
+    <tr><td style="padding:8px 12px; border-bottom:1px solid #eee;">2020년 코로나</td><td style="text-align:center; padding:8px 12px; border-bottom:1px solid #eee; color:#e67e22;">-30%</td><td style="text-align:center; padding:8px 12px; border-bottom:1px solid #eee;">약 5개월</td></tr>
+    <tr><td style="padding:8px 12px;">2022년 긴축 충격</td><td style="text-align:center; padding:8px 12px; color:#e67e22;">-33%</td><td style="text-align:center; padding:8px 12px;">약 2년</td></tr>
+  </tbody>
+</table>
 
-## 💥 먼저 솔직한 이야기부터
+<p>
+회복 속도는 빨라지고 있다. 이 패턴에서 3배 레버리지의 양의 복리 효과는 극대화된다.
+저점에서 매집한 TQQQ는 지수가 단순히 제자리로 돌아오는 것만으로도 기하급수적인 회복력을 발휘한다.
+</p>
 
-TQQQ는 나스닥100 지수의 **3배로 움직이는 ETF**예요.
+<hr style="border:none; border-top:1px solid #e0e0e0; margin: 1.5rem 0;">
 
-나스닥이 1% 오르면 TQQQ는 3% 오르고, 나스닥이 1% 내리면 TQQQ는 3% 내려요.
+<h3 style="font-size:1.05rem; font-weight:700; margin-top:1.8rem; color:#111;">레버리지의 수학 : 양날의 검</h3>
+<p>
+TQQQ를 이해하려면 레버리지 복리의 수학적 구조를 먼저 알아야 한다.
+지수가 하루 10% 오른 뒤 다음 날 약 9.1% 하락해 제자리로 돌아왔다고 가정하자.
+QQQ는 0%지만 TQQQ는 어떻게 될까.
+</p>
+<div style="background:#f8f8f8; border-left:3px solid #ccc; padding:12px 16px; margin:1rem 0; font-family:monospace; font-size:0.88rem;">
+1일차: 100 → 130 (+30%)<br>
+2일차: 130 → 94.5 (-27.3%)<br>
+결과: <strong style="color:#e74c3c;">-5.5%</strong> &nbsp;← 지수는 본전인데 TQQQ는 손실
+</div>
+<p>
+이것이 <strong>변동성 잠식(Volatility Drag)</strong>이다. 수식으로 표현하면 다음과 같다.
+</p>
+<div style="background:#f8f8f8; border-left:3px solid #ccc; padding:12px 16px; margin:1rem 0; font-family:monospace; font-size:0.95rem; text-align:center;">
+Drag ≈ ½ × L² × σ²
+</div>
+<p>
+L은 레버리지 배수, σ²는 변동성(분산)이다.
+이 공식이 말하는 것은 간단하다. TQQQ처럼 L=3이면 L²=9가 되어,
+1배 ETF보다 변동성에 의한 손실이 <strong>9배 증폭</strong>된다.
+시장이 방향 없이 위아래로 진동할수록 계좌는 조용히 마모된다.
+</p>
+<p>
+반면 시장이 한 방향으로 꾸준히 오를 때는 반대 현상이 일어난다.
+</p>
+<div style="background:#f8f8f8; border-left:3px solid #ccc; padding:12px 16px; margin:1rem 0; font-family:monospace; font-size:0.88rem;">
+3일 연속 +3% 상승 시<br>
+단순 3배 계산: +9.09%<br>
+실제 TQQQ: <strong style="color:#27ae60;">+9.27%</strong> &nbsp;← 3배를 초과하는 수익 발생
+</div>
+<p>
+추세가 있을 때는 3배를 초과하는 수익이 발생한다.
+레버리지는 횡보장에서는 독이고, 추세장에서는 가속기다.
+본 전략은 이 비대칭성을 이용한다.
+</p>
 
-2022년에는 나스닥이 약 -33% 빠지면서 TQQQ는 **-81%** 까지 폭락했어요.
-1,000만원이 190만원이 된 거예요.
+<hr style="border:none; border-top:1px solid #e0e0e0; margin: 1.5rem 0;">
 
-> **"그런데 왜 이걸 사야 하죠?"**
+<h3 style="font-size:1.05rem; font-weight:700; margin-top:1.8rem; color:#111;">전략의 핵심 : 하락을 버티는 것이 아니라 설계하는 것</h3>
+<p>
+레버리지 ETF의 가장 큰 적은 하락이 아니라 횡보다.
+본 전략은 이 문제를 회피하지 않는다.
+대신 현금풀과 금고라는 두 개의 예비 자본 레이어를 설계해,
+MDD가 깊어질수록 오히려 매수 여력이 활성화되도록 구조화했다.
+</p>
+<p>
+MDD -5% 구간부터 -50% 구간까지 10단계로 분할 매수가 자동 집행되며,
+-50%를 초과하는 극단적 폭락 구간에서는 별도로 적립된 금고 자산이 추가 투입된다.
+하락은 리스크가 아니라 시스템이 작동하는 트리거다.
+</p>
+<p>
+전고점 회복 시 TQQQ 70% / 현금 30% 비율로 자동 리밸런싱이 집행된다.
+폭락 구간에서 낮은 단가로 매집한 물량을 고점 회복 시 일부 현금화함으로써,
+다음 폭락을 위한 실탄을 재확보한다.
+</p>
 
----
+<hr style="border:none; border-top:1px solid #e0e0e0; margin: 1.5rem 0;">
 
-## 🏔️ 나스닥은 항상 돌아왔어요
+<h3 style="font-size:1.05rem; font-weight:700; margin-top:1.8rem; color:#111;">환율 반영 방법론</h3>
+<p>
+본 모델은 단순 달러 기준 수익률이 아닌,
+매 거래일의 실제 USD/KRW 환율을 적용한 원화 기준 실질 수익률을 산출한다.
+한국인 투자자에게 TQQQ의 실질 손익은 주가 변동과 환율 변동의 합산이다.
+달러 강세 구간에서는 추가 수익이, 달러 약세 구간에서는 수익이 압축되는 효과가
+모든 거래일에 자동으로 반영된다.
+거래일에 환율 데이터가 없는 경우 직전 영업일 환율을 사용한다.
+</p>
 
-| 폭락 사건 | 낙폭 | 회복 기간 |
-|-----------|------|-----------|
-| 2000년 닷컴버블 | -83% | 약 15년 |
-| 2008년 금융위기 | -54% | 약 4년 |
-| 2020년 코로나 | -30% | 약 5개월 |
-| 2022년 금리인상 | -33% | 약 2년 |
+<hr style="border:none; border-top:1px solid #e0e0e0; margin: 1.5rem 0;">
 
-어떤 폭락도 결국 전고점을 회복했고, 그 이상으로 올라갔어요.
+<h3 style="font-size:1.05rem; font-weight:700; margin-top:1.8rem; color:#111;">백테스트 방법론 및 데이터 출처</h3>
+<p>
+본 시뮬레이션은 yfinance를 통해 수집한 수정주가(Adjusted Price) 기반 일별 데이터를 사용한다.
+수정주가는 배당 및 액면분할을 소급 반영하여 장기 수익률 왜곡을 최소화한다.
+단, 다음 항목은 현재 모델에 반영되지 않았으며 실제 투자 성과와 괴리가 발생할 수 있다.
+거래 수수료 및 세금, 슬리피지(체결 가격 오차), 환전 비용, TQQQ 운용보수(연 0.98%)가 이에 해당한다.
+본 백테스터는 전략의 논리적 타당성을 검증하기 위한 이론적 시뮬레이션이며,
+과거 성과가 미래 수익을 보장하지 않는다.
+</p>
 
-폭락장에서 TQQQ를 쌀 때 사두면, 회복할 때 **3배 레버리지 효과**로 수익이 극대화돼요.
+<hr style="border:none; border-top:1px solid #e0e0e0; margin: 1.5rem 0;">
 
----
+<h3 style="font-size:1.05rem; font-weight:700; margin-top:1.8rem; color:#111;">전략의 한계</h3>
+<p>
+본 전략이 가장 취약한 시나리오는 두 가지다.
+</p>
+<p>
+첫째, 2000년 닷컴버블과 같은 구조적 장기 침체다.
+나스닥이 -83% 하락한 뒤 15년간 전고점을 회복하지 못하는 구간에서는
+현금풀과 금고 자산이 순차적으로 소진되며, 이후 추가 하락에 대응할 여력이 사라진다.
+본 전략의 모든 백테스트 구간에서 이 시나리오를 직접 검증하는 것이 향후 과제다.
+</p>
+<p>
+둘째, 횡보 장기화다. V자 반등 없이 수년간 박스권이 지속될 경우
+변동성 잠식이 누적되며 레버리지 원금이 지속적으로 감소한다.
+이 구간에서 본 전략은 단순 홀딩 대비 열위에 놓일 수 있다.
+</p>
+<p>
+이 한계를 인지하는 것이 전략을 올바르게 운용하는 전제 조건이다.
+</p>
 
-## 🧠 그래서 이 전략의 핵심은
+<hr style="border:none; border-top:1px solid #e0e0e0; margin: 1.5rem 0;">
 
-> **"폭락을 두려워하지 말고, 폭락할수록 더 많이 사라"**
+<h3 style="font-size:1.05rem; font-weight:700; margin-top:1.8rem; color:#111;">만든 사람</h3>
+<p>
+개인 투자에 대한 관심으로 시작해 여러 차례의 투자 실패를 경험했다.
+그 경험이 금융에 대한 체계적 이해의 필요성을 깨닫게 했고,
+금융투자분석사, 투자자산운용사, 신용분석사 자격증 취득으로 이어졌다.
+이 사이트는 그 과정에서 직접 설계하고 검증한 전략을 구현한 결과물이며,
+향후 포트폴리오로 활용될 예정이다.
+</p>
+<p style="margin-top:0.8rem;">
+📎 <a href="https://www.instagram.com/running_for_freedom1" target="_blank"
+style="color:#E1306C; text-decoration:none; font-weight:600;">@running_for_freedom1</a>
+</p>
 
-하지만 폭락이 -80%까지 가는 동안 버티려면 **심리적으로, 자금적으로** 준비가 돼 있어야 해요.
-현금 없이 TQQQ만 들고 있으면 -50% 구간에서 결국 패닉셀 하게 돼요.
-
----
-
-## 🏗️ 자산 구조
-
-이 전략은 시작부터 자산을 세 덩어리로 나눠요.
-```
-전체 자산 1,000만원 예시
-├── TQQQ 즉시매수  700만원 (70%)  → 지금 바로 시작
-├── 현금풀         300만원 (30%)  → 폭락 구간마다 분할 매수
-└── 금고 (선택)    별도 금액      → -50% 이하 극단적 폭락 전용
-```
-
-**현금풀**은 폭락 구간별로 나눠서 투입해요. -5% 빠졌을 때 조금, -30% 빠졌을 때 더 많이.
-
-**금고**는 -50% 이하의 극단적 폭락에서만 여는 비상금이에요. 2022년 같은 상황에서 가장 빛을 발해요.
-
----
-
-## 📊 세 가지 전략 비교
-
-**🔴 초반 집중형** — "조금만 빠져도 바로 산다"
-- -5%부터 적극적으로 매수 시작
-- 작은 조정장에서 빠르게 대응
-- 단점: 대폭락 때 현금이 일찍 소진될 수 있음
-
-**🟡 중반 집중형** — "균형 잡힌 분산" ← 초보자 추천
-- -15% ~ -30% 구간에 집중 투입
-- 대부분의 폭락 시나리오에서 안정적
-
-**🟢 후반 집중형** — "크게 빠질 때까지 기다린다"
-- -35% ~ -50% 구간에 집중 투입
-- 2022년 같은 극단적 폭락에서 가장 강함
-- 단점: 작은 조정장에선 현금을 거의 못 씀
-
----
-
-## 🔄 자동 리밸런싱
-
-전고점을 회복하면 자동으로 **TQQQ 70% / 현금 30%** 비율로 재조정해요.
-폭락 때 싸게 산 주식을 고점에서 일부 매도 → 이익 실현, 다음 폭락 대비 현금 재충전.
-이 사이클이 장기적으로 복리 효과를 만들어요.
-
----
-
-## 📈 실제로 어떤 결과가 나왔을까?
-
-아래에서 직접 시뮬레이션 해보세요. 2022년 역대급 폭락 구간 포함 백테스트가 가능해요.
-
----
-
-> ⚠️ 이 전략은 **장기 투자 (최소 3~5년)** 관점에서 접근해야 해요.
-> 단기 손실을 버틸 수 없다면 이 전략은 맞지 않아요.
-> 투자 결정은 항상 본인 책임이에요.
-    ''')
+</div>
+""", unsafe_allow_html=True)
+    st.markdown('---')
+    if False:
 
     st.divider()
     st.markdown('### 📬 투자 정보 & 업데이트 받기')
