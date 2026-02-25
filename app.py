@@ -681,7 +681,7 @@ if st.session_state.results and st.session_state.step >= 2:
                     unified_log.append({
                         '_type': 'buy',
                         '날짜': b['date'],
-                        '이벤트': f"🟢 매수 ({b['level']}% / {b['source']})",
+                        '이벤트': f"🟢 {b['shares']}주 매수 ({b['level']}% / {b['source']})",
                         'TQQQ가격': f"${price_day:.2f}",
                         'MDD': f"{b['mdd']:.1f}%",
                         '보유주수': f"{shares_after:.1f}주" if isinstance(shares_after, (int, float)) else '-',
@@ -696,12 +696,14 @@ if st.session_state.results and st.session_state.step >= 2:
                     shares_after = h_match['tqqq_shares'] if h_match else '-'
                     price_day = h_match['price'] if h_match else r['price']
                     eval_krw = round(shares_after * price_day * fx_val / 10000) if isinstance(shares_after, (int, float)) else '-'
-                    cash_remain = round(h_match.get('cash_usd', 0) * fx_val / 10000) if h_match else '-'
-                    vault_remain = round(h_match.get('vault_usd', 0) * fx_val / 10000) if h_match else '-'
+                    cash_usd_val = h_match.get('cash_usd', 0) if h_match else 0
+                    vault_usd_val = h_match.get('vault_usd', 0) if h_match else 0
+                    cash_remain = round(cash_usd_val * fx_val / 10000)
+                    vault_remain = round(vault_usd_val * fx_val / 10000)
                     unified_log.append({
                         '_type': 'rebalance',
                         '날짜': r['date'],
-                        '이벤트': f"🔵 리밸런싱 ({r['action']})",
+                        '이벤트': f"🔵 전고점 회복 · 리밸런싱 ({r['shares_diff']}주 {r['action']})",
                         'TQQQ가격': f"${price_day:.2f}",
                         'MDD': '-',
                         '보유주수': f"{shares_after:.1f}주" if isinstance(shares_after, (int, float)) else '-',
