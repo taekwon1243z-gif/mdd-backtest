@@ -749,6 +749,19 @@ if st.session_state.results and st.session_state.step >= 2:
                 c6.metric('총 거래 횟수', f'{total_tx}회')
                 st.caption(f'매수 {s["buy_count"] + s["vault_buy_count"]}회 (현금풀 {s["buy_count"]}회 · 금고 {s["vault_buy_count"]}회)　　리밸런싱(매도) {s["rebalance_count"]}회')
 
+                # 자동 해석
+                hold_returns = pd.Series([h['hold_krw'] for h in history]).pct_change().dropna()
+                hold_sharpe_val = (hold_returns.mean() / hold_returns.std() * (252**0.5)) if hold_returns.std() > 0 else 0
+                if recovery_factor >= 1 and sharpe > hold_sharpe_val:
+                    insight = f'✅ 단순 TQQQ 홀딩보다 Sharpe가 {sharpe/hold_sharpe_val:.1f}배 높고, 낙폭 대비 수익 회복력도 양호합니다. 리스크 관리가 효과적인 구간입니다.'
+                elif sharpe > hold_sharpe_val:
+                    insight = f'📈 단순 홀딩보다 Sharpe가 {sharpe/hold_sharpe_val:.1f}배 높습니다. 변동성 대비 수익은 효율적이나, 아직 낙폭 회복 중인 구간입니다.'
+                elif recovery_factor >= 1:
+                    insight = f'💰 낙폭 대비 수익은 양호하나, 변동성이 커서 Sharpe는 홀딩({hold_sharpe_val:.2f})보다 낮습니다. 장기 보유 시 유리한 전략입니다.'
+                else:
+                    insight = f'⚠️ 현재 구간은 낙폭 회복 중입니다. Sharpe {sharpe:.2f} / 홀딩 {hold_sharpe_val:.2f} — 백테스트 기간을 길게 잡을수록 전략 효과가 뚜렷하게 나타납니다.'
+                st.info(insight)
+
                 # 2. 통합 거래 내역 표
                 st.write('**📋 거래 내역 (매수 🟢 / 리밸런싱 🔵)**')
                 unified_log = []
