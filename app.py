@@ -666,8 +666,8 @@ if st.session_state.results and st.session_state.step >= 2:
                 for b in s['buy_log']:
                     # history에서 해당 날짜 cash/vault 찾기
                     h_match = next((h for h in results[name] if h['date'] == b['date']), None)
-                    cash_remain = round(h_match['cash_usd'] * h_match['fx'] / 10000) if h_match else '-'
-                    vault_remain = round(h_match['vault_usd'] * h_match['fx'] / 10000) if h_match else '-'
+                    cash_remain = round(h_match.get('cash_usd', 0) * h_match.get('fx', 1350) / 10000) if h_match else '-'
+                    vault_remain = round(h_match.get('vault_usd', 0) * h_match.get('fx', 1350) / 10000) if h_match else '-'
                     shares_after = next((h['tqqq_shares'] for h in results[name] if h['date'] == b['date']), '-')
                     eval_krw = round(shares_after * b['price'] * (h_match['fx'] if h_match else 1300) / 10000) if isinstance(shares_after, float) else '-'
                     unified_log.append({
@@ -684,8 +684,8 @@ if st.session_state.results and st.session_state.step >= 2:
                 # 리밸런싱 내역
                 for r in s['rebalance_log']:
                     h_match = next((h for h in results[name] if h['date'] == r['date']), None)
-                    cash_remain = round(h_match['cash_usd'] * h_match['fx'] / 10000) if h_match else '-'
-                    vault_remain = round(h_match['vault_usd'] * h_match['fx'] / 10000) if h_match else '-'
+                    cash_remain = round(h_match.get('cash_usd', 0) * h_match.get('fx', 1350) / 10000) if h_match else '-'
+                    vault_remain = round(h_match.get('vault_usd', 0) * h_match.get('fx', 1350) / 10000) if h_match else '-'
                     shares_after = h_match['tqqq_shares'] if h_match else '-'
                     eval_krw = round(shares_after * r['price'] * (h_match['fx'] if h_match else 1300) / 10000) if isinstance(shares_after, float) else '-'
                     unified_log.append({
