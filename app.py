@@ -408,7 +408,8 @@ with st.expander('① 기본 설정', expanded=st.session_state.step == 1):
     else:
         vault_krw = 0; vault_trigger = 50
 
-    if st.button('📊 백테스트 실행', type='primary'):
+    use_next_open = st.checkbox("📅 다음날 시가 매수 (현실적 체결가)", value=False, help="MDD 도달 당일 종가 대신 다음날 시가로 체결. 실전과 더 유사합니다.")
+    if st.button("📊 백테스트 실행", type="primary"):
         with st.spinner('데이터 로딩 중... (최초 1회는 30초 정도 걸려요)'):
             try:
                 tqqq, fx_series, tqqq_open = load_data(start_str, end_str)
