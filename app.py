@@ -194,14 +194,18 @@ def run_backtest(buy_table, tqqq, fx_dict, fx_sorted, seed_usd, use_vault, vault
                         'cash_after': round(cash,2), 'vault_after': round(vault,2)})
 
         total_usd = cash + tqqq_shares * price + vault
-        history.append({
-            'date': date_str, 'price': round(price,2), 'mdd': round(mdd,2),
-            'tqqq_shares': tqqq_shares,
-            'total_usd': round(total_usd,2), 'total_krw': round(total_usd*fx,0),
-            'hold_usd': round(hold_shares*price,2), 'hold_krw': round(hold_shares*price*fx,0),
-            'fx': round(fx,2),
-            'cash_usd': round(cash,2), 'vault_usd': round(vault,2)
-        })
+        # 주간 샘플링 (월요일 or 마지막 날만 저장) → 메모리 절약
+        import datetime as _dt
+        _d = _dt.datetime.strptime(date_str, '%Y-%m-%d')
+        if _d.weekday() == 0 or i == len(tqqq) - 1:
+            history.append({
+                'date': date_str, 'price': round(price,2), 'mdd': round(mdd,2),
+                'tqqq_shares': tqqq_shares,
+                'total_usd': round(total_usd,2), 'total_krw': round(total_usd*fx,0),
+                'hold_usd': round(hold_shares*price,2), 'hold_krw': round(hold_shares*price*fx,0),
+                'fx': round(fx,2),
+                'cash_usd': round(cash,2), 'vault_usd': round(vault,2)
+            })
 
     stats = {'buy_count': buy_count, 'vault_buy_count': vault_buy_count,
              'rebalance_count': rebalance_count,
