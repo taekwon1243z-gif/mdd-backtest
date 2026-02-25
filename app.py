@@ -105,11 +105,9 @@ def run_backtest(buy_table, tqqq, fx_dict, fx_sorted, seed_usd, use_vault, vault
     cash_ratio = 0.30; tqqq_ratio = 0.70
 
     if use_vault:
-        w           = vault_usd
-        remaining   = seed_usd - w
-        tqqq_shares = math.floor((remaining * tqqq_ratio) / prices[0])
-        cash        = remaining * cash_ratio + (remaining * tqqq_ratio - tqqq_shares * prices[0])
-        vault       = w
+        tqqq_shares = math.floor((seed_usd * tqqq_ratio) / prices[0])
+        cash        = seed_usd * cash_ratio + (seed_usd * tqqq_ratio - tqqq_shares * prices[0])
+        vault       = vault_usd  # 금고는 시드와 별개 자금
     else:
         tqqq_shares = math.floor((seed_usd * tqqq_ratio) / prices[0])
         cash        = seed_usd * cash_ratio + (seed_usd * tqqq_ratio - tqqq_shares * prices[0])
