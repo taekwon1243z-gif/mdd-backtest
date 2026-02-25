@@ -667,15 +667,19 @@ if st.session_state.results and st.session_state.step >= 2:
                 for b in s['buy_log']:
                     h_match = hist_dict.get(b['date'])
                     fx_val = h_match['fx'] if h_match else 1350
+                    shares_after = h_match['tqqq_shares'] if h_match else '-'
+                    price_day = h_match['price'] if h_match else b['price']
+                    # 평가금액 = 보유주수 × 당일종가 × 환율
+                    eval_krw = round(shares_after * price_day * fx_val / 10000) if isinstance(shares_after, (int, float)) else '-'
+                    # 현금풀: buy_log의 투입금액으로 역산 (cash_usd가 누적차감되어 부정확)
+                    total_krw_day = h_match['total_krw'] if h_match else 0
                     cash_remain = round(h_match.get('cash_usd', 0) * fx_val / 10000) if h_match else '-'
                     vault_remain = round(h_match.get('vault_usd', 0) * fx_val / 10000) if h_match else '-'
-                    shares_after = h_match['tqqq_shares'] if h_match else '-'
-                    eval_krw = round(shares_after * b['price'] * fx_val / 10000) if isinstance(shares_after, (int, float)) else '-'
                     unified_log.append({
                         '_type': 'buy',
                         '날짜': b['date'],
                         '이벤트': f"🟢 매수 ({b['level']}% / {b['source']})",
-                        'TQQQ가격': f"${b['price']:.2f}",
+                        'TQQQ가격': f"${price_day:.2f}",
                         'MDD': f"{b['mdd']:.1f}%",
                         '보유주수': f"{shares_after:.1f}주" if isinstance(shares_after, (int, float)) else '-',
                         '평가금액(만원)': eval_krw,
@@ -686,15 +690,16 @@ if st.session_state.results and st.session_state.step >= 2:
                 for r in s['rebalance_log']:
                     h_match = hist_dict.get(r['date'])
                     fx_val = h_match['fx'] if h_match else 1350
+                    shares_after = h_match['tqqq_shares'] if h_match else '-'
+                    price_day = h_match['price'] if h_match else r['price']
+                    eval_krw = round(shares_after * price_day * fx_val / 10000) if isinstance(shares_after, (int, float)) else '-'
                     cash_remain = round(h_match.get('cash_usd', 0) * fx_val / 10000) if h_match else '-'
                     vault_remain = round(h_match.get('vault_usd', 0) * fx_val / 10000) if h_match else '-'
-                    shares_after = h_match['tqqq_shares'] if h_match else '-'
-                    eval_krw = round(shares_after * r['price'] * fx_val / 10000) if isinstance(shares_after, (int, float)) else '-'
                     unified_log.append({
                         '_type': 'rebalance',
                         '날짜': r['date'],
                         '이벤트': f"🔵 리밸런싱 ({r['action']})",
-                        'TQQQ가격': f"${r['price']:.2f}",
+                        'TQQQ가격': f"${price_day:.2f}",
                         'MDD': '-',
                         '보유주수': f"{shares_after:.1f}주" if isinstance(shares_after, (int, float)) else '-',
                         '평가금액(만원)': eval_krw,
