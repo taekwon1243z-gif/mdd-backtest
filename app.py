@@ -559,6 +559,25 @@ if st.session_state.results and st.session_state.step >= 2:
                             linestyle=':', alpha=0.9,
                             label=f'QQQ 100% 홀딩  {qqq_krw[-1]:,.0f}원 ({qqq_rate:+.1f}%)')
 
+        # QQQ 가격 패널 (ax_qqq)
+        if qqq_data is not None and len(qqq_data) > 0:
+            qqq_dates2 = [str(d.date()) for d in qqq_data.index]
+            qqq_idx2, qqq_vals2 = [], []
+            for i, d in enumerate(dates_list):
+                if d in qqq_dates2:
+                    idx2 = qqq_dates2.index(d)
+                    v = float(qqq_data.iloc[idx2])
+                    if not pd.isna(v):
+                        qqq_idx2.append(i)
+                        qqq_vals2.append(v)
+            if qqq_vals2:
+                ax_qqq.plot(qqq_idx2, qqq_vals2, color='#74b9ff', linewidth=1.5)
+                ax_qqq.fill_between(qqq_idx2, qqq_vals2, min(qqq_vals2),
+                                    color='#74b9ff', alpha=0.15)
+                ax_qqq.set_xlim(0, len(dates_list)-1)
+                ax_qqq.set_ylabel('QQQ', color='white', fontsize=8)
+                ax_qqq.set_xticks([])
+
         ax.set_xticks(xticks_idx)
         ax.set_xticklabels([dates_list[i][:7] for i in xticks_idx], rotation=45, color='white')
         ax.tick_params(colors='white')
