@@ -663,38 +663,40 @@ if st.session_state.results and st.session_state.step >= 2:
                 st.write('**📋 거래 내역 (매수 🟢 / 리밸런싱 🔵)**')
                 unified_log = []
                 # 매수 내역
+                hist_dict = {h['date']: h for h in results[name]}
                 for b in s['buy_log']:
-                    # history에서 해당 날짜 cash/vault 찾기
-                    h_match = next((h for h in results[name] if h['date'] == b['date']), None)
-                    cash_remain = round(h_match.get('cash_usd', 0) * h_match.get('fx', 1350) / 10000) if h_match else '-'
-                    vault_remain = round(h_match.get('vault_usd', 0) * h_match.get('fx', 1350) / 10000) if h_match else '-'
-                    shares_after = next((h['tqqq_shares'] for h in results[name] if h['date'] == b['date']), '-')
-                    eval_krw = round(shares_after * b['price'] * (h_match['fx'] if h_match else 1300) / 10000) if isinstance(shares_after, float) else '-'
+                    h_match = hist_dict.get(b['date'])
+                    fx_val = h_match['fx'] if h_match else 1350
+                    cash_remain = round(h_match.get('cash_usd', 0) * fx_val / 10000) if h_match else '-'
+                    vault_remain = round(h_match.get('vault_usd', 0) * fx_val / 10000) if h_match else '-'
+                    shares_after = h_match['tqqq_shares'] if h_match else '-'
+                    eval_krw = round(shares_after * b['price'] * fx_val / 10000) if isinstance(shares_after, (int, float)) else '-'
                     unified_log.append({
                         '_type': 'buy',
                         '날짜': b['date'],
                         '이벤트': f"🟢 매수 ({b['level']}% / {b['source']})",
                         'TQQQ가격': f"${b['price']:.2f}",
                         'MDD': f"{b['mdd']:.1f}%",
-                        '보유주수': f"{shares_after:.1f}주" if isinstance(shares_after, float) else '-',
+                        '보유주수': f"{shares_after:.1f}주" if isinstance(shares_after, (int, float)) else '-',
                         '평가금액(만원)': eval_krw,
                         '현금풀(만원)': cash_remain,
                         '금고(만원)': vault_remain,
                     })
                 # 리밸런싱 내역
                 for r in s['rebalance_log']:
-                    h_match = next((h for h in results[name] if h['date'] == r['date']), None)
-                    cash_remain = round(h_match.get('cash_usd', 0) * h_match.get('fx', 1350) / 10000) if h_match else '-'
-                    vault_remain = round(h_match.get('vault_usd', 0) * h_match.get('fx', 1350) / 10000) if h_match else '-'
+                    h_match = hist_dict.get(r['date'])
+                    fx_val = h_match['fx'] if h_match else 1350
+                    cash_remain = round(h_match.get('cash_usd', 0) * fx_val / 10000) if h_match else '-'
+                    vault_remain = round(h_match.get('vault_usd', 0) * fx_val / 10000) if h_match else '-'
                     shares_after = h_match['tqqq_shares'] if h_match else '-'
-                    eval_krw = round(shares_after * r['price'] * (h_match['fx'] if h_match else 1300) / 10000) if isinstance(shares_after, float) else '-'
+                    eval_krw = round(shares_after * r['price'] * fx_val / 10000) if isinstance(shares_after, (int, float)) else '-'
                     unified_log.append({
                         '_type': 'rebalance',
                         '날짜': r['date'],
                         '이벤트': f"🔵 리밸런싱 ({r['action']})",
                         'TQQQ가격': f"${r['price']:.2f}",
                         'MDD': '-',
-                        '보유주수': f"{shares_after:.1f}주" if isinstance(shares_after, float) else '-',
+                        '보유주수': f"{shares_after:.1f}주" if isinstance(shares_after, (int, float)) else '-',
                         '평가금액(만원)': eval_krw,
                         '현금풀(만원)': cash_remain,
                         '금고(만원)': vault_remain,
@@ -714,31 +716,7 @@ if st.session_state.results and st.session_state.step >= 2:
                     styled = df_unified.style.apply(highlight_row, axis=1)
                     st.dataframe(styled, use_container_width=True, hide_index=True)
 
-                if s['buy_log']:
-                    df = pd.DataFrame(s['buy_log'])
-                    df = df[['date','mdd','cost_krw','source']]
-                    df.columns = ['날짜','낙폭(%)','투입금액(원)','출처']
-                    df['낙폭(%)'] = df['낙폭(%)'].apply(lambda x: f'{x:.1f}%')
-                    df['투입금액(원)'] = df['투입금액(원)'].apply(lambda x: f'{int(x):,}원')
 
-                    def highlight_source(row):
-                        if row['출처'] == '금고':
-                            return ['background-color: rgba(231,76,60,0.2)']*len(row)
-                        return ['background-color: rgba(46,204,113,0.15)']*len(row)
-
-                    st.dataframe(
-                        df.style.apply(highlight_source, axis=1),
-                        use_container_width=True, height=250
-                    )
-                    st.caption('🟢 현금풀 매수  🔴 금고 매수')
-
-                if s['rebalance_log']:
-                    st.write('**🔄 리밸런싱 내역**')
-                    df_r = pd.DataFrame(s['rebalance_log'])
-                    df_r = df_r[['date','action','shares_diff']]
-                    df_r.columns = ['날짜','구분','거래주수']
-                    st.dataframe(df_r, use_container_width=True, height=200)
-                    st.caption('💡 전고점 회복 시 TQQQ 70% / 현금 30% 비율로 자동 재조정해요.')
 
         # 3. 연도별 수익률 표 색상 강조
         st.subheader('📅 연도별 수익률')
