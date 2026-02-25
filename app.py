@@ -759,8 +759,7 @@ if st.session_state.results and st.session_state.step >= 2:
                     unified_log.append({
                         '_type': 'buy',
                         '날짜': b['date'],
-                        '이벤트': f"🟢 {b['shares']}주 매수 ({b['level']}% / {b['source']})",
-                        'TQQQ가격': f"${price_day:.2f}",
+'이벤트': f"{'🟡' if b['source'] == 'DCA' else '🟢'} {b['shares']}주 매수 ({b['level']}% / {b['source']})",                        'TQQQ가격': f"${price_day:.2f}",
                         'MDD': f"{b['mdd']:.1f}%",
                         '보유주수': f"{shares_after:.1f}주" if isinstance(shares_after, (int, float)) else '-',
                         '평가금액': f'{int(eval_krw)*10000:,}원' if isinstance(eval_krw, (int,float)) else '-',
