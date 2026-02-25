@@ -118,7 +118,9 @@ def run_backtest(buy_table, tqqq, fx_dict, fx_sorted, seed_usd, use_vault, vault
                     tqqq_shares += buy_shares; cash -= actual_cost; buy_count += 1
                     buy_log.append({'date': date_str, 'price': round(price,2),
                         'mdd': round(mdd,2), 'level': level, 'shares': buy_shares,
-                        'cost_krw': round(actual_cost*fx,0), 'source': '현금풀'})
+                        'shares_total': tqqq_shares,
+                        'cost_krw': round(actual_cost*fx,0), 'source': '현금풀',
+                        'cash_after': round(cash,2), 'vault_after': round(vault,2)})
                 bought_levels.add(level)
 
         if use_vault and vault > 0:
@@ -131,7 +133,9 @@ def run_backtest(buy_table, tqqq, fx_dict, fx_sorted, seed_usd, use_vault, vault
                         tqqq_shares += buy_shares; vault -= actual_cost; vault_buy_count += 1
                         buy_log.append({'date': date_str, 'price': round(price,2),
                             'mdd': round(mdd,2), 'level': level, 'shares': buy_shares,
-                            'cost_krw': round(actual_cost*fx,0), 'source': '금고'})
+                            'shares_total': tqqq_shares,
+                            'cost_krw': round(actual_cost*fx,0), 'source': '금고',
+                            'cash_after': round(cash,2), 'vault_after': round(vault,2)})
                     vault_levels.add(level)
 
         total_usd = cash + tqqq_shares * price + vault
@@ -667,14 +671,11 @@ if st.session_state.results and st.session_state.step >= 2:
                 for b in s['buy_log']:
                     h_match = hist_dict.get(b['date'])
                     fx_val = h_match['fx'] if h_match else 1350
-                    shares_after = h_match['tqqq_shares'] if h_match else '-'
+                    shares_after = b.get('shares_total', h_match['tqqq_shares'] if h_match else '-')
                     price_day = h_match['price'] if h_match else b['price']
-                    # 평가금액 = 보유주수 × 당일종가 × 환율
                     eval_krw = round(shares_after * price_day * fx_val / 10000) if isinstance(shares_after, (int, float)) else '-'
-                    # 현금풀: buy_log의 투입금액으로 역산 (cash_usd가 누적차감되어 부정확)
-                    total_krw_day = h_match['total_krw'] if h_match else 0
-                    cash_remain = round(h_match.get('cash_usd', 0) * fx_val / 10000) if h_match else '-'
-                    vault_remain = round(h_match.get('vault_usd', 0) * fx_val / 10000) if h_match else '-'
+                    cash_remain = round(b.get('cash_after', 0) * fx_val / 10000) if 'cash_after' in b else '-'
+                    vault_remain = round(b.get('vault_after', 0) * fx_val / 10000) if 'vault_after' in b else '-'
                     unified_log.append({
                         '_type': 'buy',
                         '날짜': b['date'],
