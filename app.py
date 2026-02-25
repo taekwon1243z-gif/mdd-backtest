@@ -507,7 +507,7 @@ if st.session_state.results and st.session_state.step >= 2:
             rate   = (totals[-1] / totals[0] - 1) * 100
             ax.plot(range(len(dates_list)), totals,
                     label=f'{name}  {totals[-1]:,.0f}원 ({rate:+.1f}%)',
-                    color=colors[name], linewidth=1.5)
+                    color=colors[name], linewidth=1.0)
 
             # 매수 시점 표시
             buy_log = st.session_state.results_stats[name]['buy_log'] if 'results_stats' in st.session_state else []
@@ -521,8 +521,8 @@ if st.session_state.results and st.session_state.step >= 2:
         hold = [h['hold_krw'] for h in first]
         hold_rate = (hold[-1] / hold[0] - 1) * 100
         ax.plot(range(len(dates_list)), hold,
-                label=f'단순 홀딩  {hold[-1]:,.0f}원 ({hold_rate:+.1f}%)',
-                color='#74b9ff', linewidth=2, linestyle='--', alpha=0.8)
+                label=f'TQQQ 100% 단순홀딩  {hold[-1]:,.0f}원 ({hold_rate:+.1f}%)',
+                color='#74b9ff', linewidth=2, linestyle='-', alpha=0.8)
 
         # QQQ 동일 시드 원화 기준으로 변환
         if qqq_data is not None and len(qqq_data) > 0:
@@ -555,9 +555,9 @@ if st.session_state.results and st.session_state.step >= 2:
                         qqq_krw.append(qqq_shares * price * fx)
                 if qqq_krw:
                     qqq_rate = (qqq_krw[-1] / qqq_krw[0] - 1) * 100
-                    ax.plot(qqq_idx, qqq_krw, color='#a29bfe', linewidth=1.5,
-                            linestyle=':', alpha=0.9,
-                            label=f'QQQ 100% 홀딩  {qqq_krw[-1]:,.0f}원 ({qqq_rate:+.1f}%)')
+                    ax.plot(qqq_idx, qqq_krw, color='#6c5ce7', linewidth=1.0,
+                            linestyle='-', alpha=0.9,
+                            label=f'QQQ 100% 단순홀딩  {qqq_krw[-1]:,.0f}원 ({qqq_rate:+.1f}%)')
 
         # QQQ 패널 제거 (메인 차트에 통합)
 
@@ -587,9 +587,9 @@ if st.session_state.results and st.session_state.step >= 2:
                         rsi_idx.append(i)
                         rsi_vals.append(v)
             if rsi_vals:
-                ax_rsi.plot(rsi_idx, rsi_vals, color='#fdcb6e', linewidth=1.5)
-                ax_rsi.axhline(70, color='#e17055', linestyle='--', alpha=0.7, linewidth=1)
-                ax_rsi.axhline(30, color='#00b894', linestyle='--', alpha=0.7, linewidth=1)
+                ax_rsi.plot(rsi_idx, rsi_vals, color='#fdcb6e', linewidth=1.0)
+                ax_rsi.axhline(70, color='#e17055', linestyle='-', alpha=0.7, linewidth=1)
+                ax_rsi.axhline(30, color='#00b894', linestyle='-', alpha=0.7, linewidth=1)
                 ax_rsi.fill_between(rsi_idx, rsi_vals, 30,
                                     where=[v < 30 for v in rsi_vals],
                                     color='#00b894', alpha=0.3)
@@ -617,8 +617,8 @@ if st.session_state.results and st.session_state.step >= 2:
                         vix_idx.append(i)
                         vix_vals.append(v)
             if vix_vals:
-                ax_vix.plot(vix_idx, vix_vals, color='#fd79a8', linewidth=1.5)
-                ax_vix.axhline(30, color='#e17055', linestyle='--', alpha=0.7, linewidth=1)
+                ax_vix.plot(vix_idx, vix_vals, color='#fd79a8', linewidth=1.0)
+                ax_vix.axhline(30, color='#e17055', linestyle='-', alpha=0.7, linewidth=1)
                 ax_vix.fill_between(vix_idx, vix_vals, 30,
                                     where=[v > 30 for v in vix_vals],
                                     color='#e17055', alpha=0.3)
