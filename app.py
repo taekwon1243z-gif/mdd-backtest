@@ -588,14 +588,15 @@ if st.session_state.results and st.session_state.step >= 2:
                     label=f'{name}  {totals[-1]:,.0f}원 ({rate:+.1f}%)',
                     color=colors[name], linewidth=1.0)
 
-            # 매수 시점 표시
-            buy_log = st.session_state.results_stats[name]['buy_log'] if 'results_stats' in st.session_state else []
-            buy_dates = [b['date'] for b in buy_log]
-            buy_idx = [i for i, d in enumerate(dates_list) if d in buy_dates]
-            buy_vals = [totals[i] for i in buy_idx]
-            if buy_idx:
-                ax.scatter(buy_idx, buy_vals, color=colors[name],
-                           marker='^', s=30, alpha=0.6, zorder=5)
+            # 매수 시점 표시 (출처별 색상 구분)
+            buy_log = all_stats[name]['buy_log']
+            for source, marker_color, mk in [('현금풀', colors[name], '^'), ('금고', '#e17055', 's'), ('DCA', '#fdcb6e', 'D')]:
+                src_dates = [b['date'] for b in buy_log if b['source'] == source]
+                src_idx = [i for i, d in enumerate(dates_list) if d in src_dates]
+                src_vals = [totals[i] for i in src_idx]
+                if src_idx:
+                    ax.scatter(src_idx, src_vals, color=marker_color,
+                               marker=mk, s=30, alpha=0.8, zorder=5)
 
         hold = [h['hold_krw'] for h in first]
         hold_rate = (hold[-1] / hold[0] - 1) * 100
