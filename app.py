@@ -760,10 +760,48 @@ if st.session_state.selected_strategy and st.session_state.step >= 3:
             next_levels = [(level, ratio) for level, ratio in strategy_table if level < cur_mdd]
             triggered   = [(level, ratio) for level, ratio in strategy_table if level >= cur_mdd]
 
+            # 현금풀 = 입력한 남은 현금 (my_cash)
+            cash_pool = my_cash if my_cash > 0 else 0
+
+            # 다음 매수 구간
             if next_levels:
                 next_level = max(next_levels, key=lambda x: x[0])
-                st.info(f'현재 MDD {cur_mdd:.1f}% → 다음 매수 구간: **{next_level[0]}%** (현금풀의 {next_level[1]*100:.0f}% 투입)')
+                invest_krw = cash_pool * next_level[1]
+                invest_usd = invest_krw / cur_fx if cur_fx > 0 else 0
+                shares_to_buy = invest_usd / cur_price if cur_price > 0 else 0
+                st.info(
+                    f'현재 MDD **{cur_mdd:.1f}%** → 다음 매수 구간: **{next_level[0]}%** 진입 시\n\n'
+                    f'- 투입 비율: 현금풀의 **{next_level[1]*100:.0f}%**\n'
+                    f'- 투입 금액: **{invest_krw:,.0f}원** (${invest_usd:,.0f})\n'
+                    f'- 매수 주수: 약 **{shares_to_buy:.2f}주** (현재가 ${cur_price:.2f} 기준)'
+                )
+
+            # 이미 지나친 구간 상세
             if triggered:
-                st.success(f'이미 진입한 구간: {[l for l,r in triggered]}')
+                st.subheader('📋 이미 지나친 구간별 매수 안내 (소급)')
+                import pandas as pd
+                rows = []
+                total_invest_krw = 0
+                total_shares = 0
+                for level, ratio in sorted(triggered, reverse=True):
+                    invest_krw = cash_pool * ratio
+                    invest_usd = invest_krw / cur_fx if cur_fx > 0 else 0
+                    shares = invest_usd / cur_price if cur_price > 0 else 0
+                    total_invest_krw += invest_krw
+                    total_shares += shares
+                    rows.append({
+                        'MDD 구간': f'{level}%',
+                        '투입 비율': f'{ratio*100:.0f}%',
+                        '투입 금액 (원)': f'{invest_krw:,.0f}',
+                        '매수 주수 (주)': f'{shares:.2f}'
+                    })
+                df = pd.DataFrame(rows)
+                st.dataframe(df, use_container_width=True, hide_index=True)
+                st.warning(
+                    f'💡 위 구간을 모두 매수했다면\n\n'
+                    f'- 총 투입 금액: **{total_invest_krw:,.0f}원**\n'
+                    f'- 총 매수 주수: 약 **{total_shares:.2f}주**\n'
+                    f'- 현재가 기준 평가금액: **{total_shares * cur_price * cur_fx:,.0f}원**'
+                )
 
             st.session_state.step = 4
