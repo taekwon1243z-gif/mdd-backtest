@@ -1,0 +1,4 @@
+.env
+kakao.py
+*.json
+__pycache__/
