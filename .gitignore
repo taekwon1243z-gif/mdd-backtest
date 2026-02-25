@@ -2,3 +2,9 @@
 kakao.py
 *.json
 __pycache__/
+get_token.py
+get_token2.py
+test_kakao.py
+state.json
+__pycache__/
+*.pyc
