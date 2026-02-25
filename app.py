@@ -657,6 +657,10 @@ if st.session_state.results and st.session_state.step >= 2:
         st.pyplot(fig)
         plt.close("all")
 
+        # 합성 데이터 경고
+        if start_str < TQQQ_IPO:
+            st.warning('⚠️ 선택한 기간에 TQQQ 상장일(2010-02-11) 이전이 포함되어 있습니다. 해당 구간은 QQQ 일간수익률 × 3배로 합성한 데이터이며 실제 TQQQ와 괴리가 있을 수 있습니다.')
+
         # 1. 전략별 상세 요약 카드
         st.subheader('📊 전략별 상세')
         for name in strategy_names:
