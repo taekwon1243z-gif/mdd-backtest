@@ -736,14 +736,17 @@ if st.session_state.results and st.session_state.step >= 2:
 
             with st.expander(f'{name}  |  최종 {final_krw/10000:.0f}만원  |  연평균 {cagr:.1f}%'):
                 # 요약 카드
-                c1, c2, c3, c4, c5 = st.columns(5)
+                c1, c2, c3, c4, c5, c6 = st.columns(6)
                 c1.metric('최종 자산', f'{final_krw/10000:.0f}만원', f'{(final_krw/init_krw-1)*100:+.1f}%')
                 c2.metric('연평균 수익률', f'{cagr:.1f}%')
                 c3.metric('TQQQ 최대 낙폭', f'{worst_mdd:.1f}%')
                 total_tx = s["buy_count"] + s["vault_buy_count"] + s["rebalance_count"]
                 recovery_factor = (final_krw / init_krw - 1) / abs(worst_mdd) if worst_mdd != 0 else 0
+                daily_returns = pd.Series([h['total_krw'] for h in history]).pct_change().dropna()
+                sharpe = (daily_returns.mean() / daily_returns.std() * (252**0.5)) if daily_returns.std() > 0 else 0
                 c4.metric('Recovery Factor', f'{recovery_factor:.2f}x')
-                c5.metric('총 거래 횟수', f'{total_tx}회')
+                c5.metric('Sharpe Ratio', f'{sharpe:.2f}')
+                c6.metric('총 거래 횟수', f'{total_tx}회')
                 st.caption(f'매수 {s["buy_count"] + s["vault_buy_count"]}회 (현금풀 {s["buy_count"]}회 · 금고 {s["vault_buy_count"]}회)　　리밸런싱(매도) {s["rebalance_count"]}회')
 
                 # 2. 통합 거래 내역 표
