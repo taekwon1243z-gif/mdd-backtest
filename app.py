@@ -140,7 +140,8 @@ def run_backtest(buy_table, tqqq, fx_dict, fx_sorted, seed_usd, use_vault, vault
             'tqqq_shares': tqqq_shares,
             'total_usd': round(total_usd,2), 'total_krw': round(total_usd*fx,0),
             'hold_usd': round(hold_shares*price,2), 'hold_krw': round(hold_shares*price*fx,0),
-            'fx': round(fx,2)
+            'fx': round(fx,2),
+            'cash_usd': round(cash,2), 'vault_usd': round(vault,2)
         })
 
     stats = {'buy_count': buy_count, 'vault_buy_count': vault_buy_count,
@@ -658,9 +659,62 @@ if st.session_state.results and st.session_state.step >= 2:
                 c3.metric('TQQQ 최대 낙폭', f'{worst_mdd:.1f}%')
                 c4.metric('총 매수 횟수', f'{s["buy_count"] + s["vault_buy_count"]}회')
 
-                # 2. 매수 내역 표 — 핵심 컬럼만, 색상 강조
+                # 2. 통합 거래 내역 표
+                st.write('**📋 거래 내역 (매수 🟢 / 리밸런싱 🔵)**')
+                unified_log = []
+                # 매수 내역
+                for b in s['buy_log']:
+                    # history에서 해당 날짜 cash/vault 찾기
+                    h_match = next((h for h in results[name] if h['date'] == b['date']), None)
+                    cash_remain = round(h_match['cash_usd'] * h_match['fx'] / 10000) if h_match else '-'
+                    vault_remain = round(h_match['vault_usd'] * h_match['fx'] / 10000) if h_match else '-'
+                    shares_after = next((h['tqqq_shares'] for h in results[name] if h['date'] == b['date']), '-')
+                    eval_krw = round(shares_after * b['price'] * (h_match['fx'] if h_match else 1300) / 10000) if isinstance(shares_after, float) else '-'
+                    unified_log.append({
+                        '_type': 'buy',
+                        '날짜': b['date'],
+                        '이벤트': f"🟢 매수 ({b['level']}% / {b['source']})",
+                        'TQQQ가격': f"${b['price']:.2f}",
+                        'MDD': f"{b['mdd']:.1f}%",
+                        '보유주수': f"{shares_after:.1f}주" if isinstance(shares_after, float) else '-',
+                        '평가금액(만원)': eval_krw,
+                        '현금풀(만원)': cash_remain,
+                        '금고(만원)': vault_remain,
+                    })
+                # 리밸런싱 내역
+                for r in s['rebalance_log']:
+                    h_match = next((h for h in results[name] if h['date'] == r['date']), None)
+                    cash_remain = round(h_match['cash_usd'] * h_match['fx'] / 10000) if h_match else '-'
+                    vault_remain = round(h_match['vault_usd'] * h_match['fx'] / 10000) if h_match else '-'
+                    shares_after = h_match['tqqq_shares'] if h_match else '-'
+                    eval_krw = round(shares_after * r['price'] * (h_match['fx'] if h_match else 1300) / 10000) if isinstance(shares_after, float) else '-'
+                    unified_log.append({
+                        '_type': 'rebalance',
+                        '날짜': r['date'],
+                        '이벤트': f"🔵 리밸런싱 ({r['action']})",
+                        'TQQQ가격': f"${r['price']:.2f}",
+                        'MDD': '-',
+                        '보유주수': f"{shares_after:.1f}주" if isinstance(shares_after, float) else '-',
+                        '평가금액(만원)': eval_krw,
+                        '현금풀(만원)': cash_remain,
+                        '금고(만원)': vault_remain,
+                    })
+
+                if unified_log:
+                    unified_log.sort(key=lambda x: x['날짜'])
+                    df_unified = pd.DataFrame(unified_log).drop(columns=['_type'])
+
+                    def highlight_row(row):
+                        if '🟢' in str(row['이벤트']):
+                            return ['background-color: rgba(46,204,113,0.15)'] * len(row)
+                        elif '🔵' in str(row['이벤트']):
+                            return ['background-color: rgba(52,152,219,0.15)'] * len(row)
+                        return [''] * len(row)
+
+                    styled = df_unified.style.apply(highlight_row, axis=1)
+                    st.dataframe(styled, use_container_width=True, hide_index=True)
+
                 if s['buy_log']:
-                    st.write('**💰 매수 내역**')
                     df = pd.DataFrame(s['buy_log'])
                     df = df[['date','mdd','cost_krw','source']]
                     df.columns = ['날짜','낙폭(%)','투입금액(원)','출처']
