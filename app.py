@@ -661,7 +661,9 @@ if st.session_state.results and st.session_state.step >= 2:
                 c1.metric('최종 자산', f'{final_krw/10000:.0f}만원', f'{(final_krw/init_krw-1)*100:+.1f}%')
                 c2.metric('연평균 수익률', f'{cagr:.1f}%')
                 c3.metric('TQQQ 최대 낙폭', f'{worst_mdd:.1f}%')
-                c4.metric('총 매수 횟수', f'{s["buy_count"] + s["vault_buy_count"]}회')
+                total_tx = s["buy_count"] + s["vault_buy_count"] + s["rebalance_count"]
+                c4.metric('총 거래 횟수', f'{total_tx}회')
+                st.caption(f'매수 {s["buy_count"] + s["vault_buy_count"]}회 (현금풀 {s["buy_count"]}회 · 금고 {s["vault_buy_count"]}회)　　리밸런싱(매도) {s["rebalance_count"]}회')
 
                 # 2. 통합 거래 내역 표
                 st.write('**📋 거래 내역 (매수 🟢 / 리밸런싱 🔵)**')
@@ -683,9 +685,9 @@ if st.session_state.results and st.session_state.step >= 2:
                         'TQQQ가격': f"${price_day:.2f}",
                         'MDD': f"{b['mdd']:.1f}%",
                         '보유주수': f"{shares_after:.1f}주" if isinstance(shares_after, (int, float)) else '-',
-                        '평가금액(만원)': eval_krw,
-                        '현금풀(만원)': cash_remain,
-                        '금고(만원)': vault_remain,
+                        '평가금액': f'{int(eval_krw)*10000:,}원' if isinstance(eval_krw, (int,float)) else '-',
+                        '현금풀': f'{int(cash_remain)*10000:,}원' if isinstance(cash_remain, (int,float)) else '-',
+                        '금고': f'{int(vault_remain)*10000:,}원' if isinstance(vault_remain, (int,float)) else '-',
                     })
                 # 리밸런싱 내역
                 for r in s['rebalance_log']:
@@ -703,9 +705,9 @@ if st.session_state.results and st.session_state.step >= 2:
                         'TQQQ가격': f"${price_day:.2f}",
                         'MDD': '-',
                         '보유주수': f"{shares_after:.1f}주" if isinstance(shares_after, (int, float)) else '-',
-                        '평가금액(만원)': eval_krw,
-                        '현금풀(만원)': cash_remain,
-                        '금고(만원)': vault_remain,
+                        '평가금액': f'{int(eval_krw)*10000:,}원' if isinstance(eval_krw, (int,float)) else '-',
+                        '현금풀': f'{int(cash_remain)*10000:,}원' if isinstance(cash_remain, (int,float)) else '-',
+                        '금고': f'{int(vault_remain)*10000:,}원' if isinstance(vault_remain, (int,float)) else '-',
                     })
 
                 if unified_log:
@@ -719,8 +721,13 @@ if st.session_state.results and st.session_state.step >= 2:
                             return ['background-color: rgba(52,152,219,0.15)'] * len(row)
                         return [''] * len(row)
 
+                    # 금고 미사용 시 컬럼 숨기기
+                    if not use_vault or s['vault_buy_count'] == 0:
+                        df_unified = df_unified.drop(columns=['금고'], errors='ignore')
                     styled = df_unified.style.apply(highlight_row, axis=1)
-                    st.dataframe(styled, use_container_width=True, hide_index=True)
+                    row_h = 35
+                    table_h = min(600, max(200, len(unified_log) * row_h + 40))
+                    st.dataframe(styled, use_container_width=True, hide_index=True, height=table_h)
 
 
 
