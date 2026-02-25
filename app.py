@@ -522,7 +522,7 @@ if st.session_state.results and st.session_state.step >= 2:
         hold_rate = (hold[-1] / hold[0] - 1) * 100
         ax.plot(range(len(dates_list)), hold,
                 label=f'TQQQ 100% 단순홀딩  {hold[-1]:,.0f}원 ({hold_rate:+.1f}%)',
-                color='#74b9ff', linewidth=2, linestyle='-', alpha=0.8)
+                color='#74b9ff', linewidth=1.0, linestyle='-', alpha=0.9)
 
         # QQQ 동일 시드 원화 기준으로 변환
         if qqq_data is not None and len(qqq_data) > 0:
