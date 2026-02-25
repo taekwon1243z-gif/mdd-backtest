@@ -34,12 +34,18 @@ def make_vault_table(trigger):
     levels = [-(trigger + i*5) for i in range(6)]
     return list(zip(levels, [0.20,0.20,0.20,0.20,0.10,0.10]))
 
+TQQQ_IPO = '2010-02-11'
+DAILY_EXPENSE = 0.0098 / 252
+
 @st.cache_data(show_spinner=False)
 def load_data(start, end):
     import time
+    import pandas as pd
     for attempt in range(3):
         try:
-            raw  = yf.download('TQQQ', start=start, end=end, progress=False, auto_adjust=False)
+            use_synthetic = start < TQQQ_IPO
+            tqqq_start = TQQQ_IPO if use_synthetic else start
+            raw  = yf.download('TQQQ', start=tqqq_start, end=end, progress=False, auto_adjust=False)
             fx   = yf.download('USDKRW=X', start=start, end=end, progress=False, auto_adjust=False)
             if 'Close' in raw.columns:
                 tqqq = raw['Close'].dropna().squeeze()
@@ -53,6 +59,31 @@ def load_data(start, end):
                 fx = fx['Close'].dropna().squeeze()
             else:
                 fx = fx.iloc[:, 0].dropna().squeeze()
+            # 합성 TQQQ 생성 (상장 이전 구간)
+            if use_synthetic:
+                qqq_raw = yf.download('QQQ', start=start, end=TQQQ_IPO, progress=False, auto_adjust=False)
+                if len(qqq_raw) > 0:
+                    qqq_c = qqq_raw['Close'].dropna().squeeze()
+                    qqq_o = qqq_raw['Open'].dropna().squeeze()
+                    # 일간 수익률 × 3배 - 운용보수
+                    qqq_ret = qqq_c.pct_change().fillna(0)
+                    # TQQQ 첫날 가격 기준 역산
+                    first_price = float(tqqq.iloc[0])
+                    synth = [first_price]
+                    for r in reversed((qqq_ret * 3 - DAILY_EXPENSE).values[1:]):
+                        synth.insert(0, synth[0] / (1 + r) if (1 + r) != 0 else synth[0])
+                    tqqq_synth = pd.Series(synth, index=qqq_c.index)
+                    # 시가 합성
+                    qqq_o_ret = qqq_o.pct_change().fillna(0)
+                    first_open = float(tqqq_open.iloc[0])
+                    synth_o = [first_open]
+                    for r in reversed((qqq_o_ret * 3 - DAILY_EXPENSE).values[1:]):
+                        synth_o.insert(0, synth_o[0] / (1 + r) if (1 + r) != 0 else synth_o[0])
+                    tqqq_open_synth = pd.Series(synth_o, index=qqq_o.index)
+                    # 연결
+                    tqqq = pd.concat([tqqq_synth, tqqq])
+                    tqqq_open = pd.concat([tqqq_open_synth, tqqq_open])
+
             if len(tqqq) > 0 and len(fx) > 0:
                 return tqqq, fx, tqqq_open
         except Exception as e:
@@ -389,9 +420,12 @@ with st.expander('① 기본 설정', expanded=st.session_state.step == 1):
             start_str = str(start_date); end_str = str(end_date)
         else:
             mapping = {
-                '2022~현재 (금리인상 폭락 포함)': ('2022-01-01', None),
-                '2020~현재 (코로나 포함)':        ('2020-01-01', None),
-                '2019~현재 (전체)':               ('2019-01-01', None),
+                '2022~현재 (금리인상 폭락 포함)':           ('2022-01-01', None),
+                '2020~현재 (코로나 포함)':                  ('2020-01-01', None),
+                '2019~현재 (전체)':                        ('2019-01-01', None),
+                '2010~현재 (TQQQ 상장 이후 전체)':          ('2010-02-11', None),
+                '2000~현재 (닷컴버블 포함 ⚠️합성)':         ('2000-01-01', None),
+                '2000~2010 (닷컴+금융위기 ⚠️합성)':         ('2000-01-01', '2010-02-11'),
             }
             start_str, end_str = mapping[period]
 
