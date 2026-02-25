@@ -98,7 +98,7 @@ def get_fx(fx_dict, fx_sorted, date_str):
     past = [d for d in fx_sorted if d <= date_str]
     return fx_dict[past[-1]] if past else 1350
 
-def run_backtest(buy_table, tqqq, fx_dict, fx_sorted, seed_usd, use_vault, vault_usd, vault_trigger, use_next_open=False, tqqq_open=None):
+def run_backtest(buy_table, tqqq, fx_dict, fx_sorted, seed_usd, use_vault, vault_usd, vault_trigger, use_next_open=False, tqqq_open=None, use_dca=False, dca_amount_usd=0.0, dca_day=1):
     dates  = tqqq.index.tolist()
     prices = tqqq.tolist()
     vault_table = make_vault_table(vault_trigger)
@@ -179,6 +179,19 @@ def run_backtest(buy_table, tqqq, fx_dict, fx_sorted, seed_usd, use_vault, vault
                             'cost_krw': round(actual_cost*fx,0), 'source': '금고',
                             'cash_after': round(cash,2), 'vault_after': round(vault,2)})
                     vault_levels.add(level)
+
+        # DCA 적립식 매수
+        if use_dca and dca_amount_usd > 0:
+            if date_str[8:10] == f'{dca_day:02d}':
+                buy_shares = math.floor(dca_amount_usd / buy_price)
+                actual_cost = buy_shares * buy_price
+                if buy_shares >= 1:
+                    tqqq_shares += buy_shares; buy_count += 1
+                    buy_log.append({'date': date_str, 'price': round(buy_price,2),
+                        'mdd': round(mdd,2), 'level': 0, 'shares': buy_shares,
+                        'shares_total': tqqq_shares,
+                        'cost_krw': round(actual_cost*fx,0), 'source': 'DCA',
+                        'cash_after': round(cash,2), 'vault_after': round(vault,2)})
 
         total_usd = cash + tqqq_shares * price + vault
         history.append({
@@ -446,6 +459,16 @@ with st.expander('① 기본 설정', expanded=st.session_state.step == 1):
         vault_krw = 0; vault_trigger = 50
 
     use_next_open = st.checkbox("📅 다음날 시가 매수 (현실적 체결가)", value=False, help="MDD 도달 당일 종가 대신 다음날 시가로 체결. 실전과 더 유사합니다.")
+    use_dca = st.checkbox("📅 적립식 추매 (DCA) - 매월 고정 금액 자동 매수", value=False)
+    dca_amount_krw = 0
+    dca_day = 1
+    if use_dca:
+        col_d1, col_d2 = st.columns(2)
+        with col_d1:
+            dca_amount_krw = st.number_input("월 적립 금액 (원)", min_value=10000, value=100000, step=10000, format="%d")
+        with col_d2:
+            dca_day = st.slider("매월 몇 일에 매수?", min_value=1, max_value=28, value=1)
+        st.caption(f"매월 {dca_day}일에 {dca_amount_krw:,}원씩 자동 매수")
     if st.button("📊 백테스트 실행", type="primary"):
         with st.spinner('데이터 로딩 중... (최초 1회는 30초 정도 걸려요)'):
             try:
@@ -460,7 +483,8 @@ with st.expander('① 기본 설정', expanded=st.session_state.step == 1):
                 for name, table in STRATEGIES.items():
                     h, s = run_backtest(table, tqqq, fx_dict, fx_sorted,
                                         seed_usd, use_vault, vault_usd, vault_trigger,
-                                        use_next_open=use_next_open, tqqq_open=tqqq_open)
+                                        use_next_open=use_next_open, tqqq_open=tqqq_open,
+                                        use_dca=use_dca, dca_amount_usd=dca_amount_krw/start_fx, dca_day=dca_day)
                     results[name] = h; all_stats[name] = s
 
                 st.session_state.results      = results
