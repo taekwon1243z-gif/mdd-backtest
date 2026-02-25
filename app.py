@@ -482,14 +482,13 @@ if st.session_state.results and st.session_state.step >= 2:
             rs    = gain / loss
             return 100 - (100 / (1 + rs))
 
-        fig, axes = plt.subplots(4, 1, figsize=(12, 8),
-                                  gridspec_kw={'height_ratios': [3.5, 1.0, 0.8, 0.8],
+        fig, axes = plt.subplots(3, 1, figsize=(12, 8),
+                                  gridspec_kw={'height_ratios': [3.5, 1.0, 1.0],
                                                'hspace': 0.05})
         fig.patch.set_facecolor('#1a1a2e')
         ax     = axes[0]   # 메인: 수익률
-        ax_qqq = axes[1]   # QQQ 가격
-        ax_rsi = axes[2]   # RSI (보조지표 1)
-        ax_vix = axes[3]   # VIX (보조지표 2, 맨 하단)
+        ax_rsi = axes[1]   # RSI
+        ax_vix = axes[2]   # VIX
         for a in axes:
             a.set_facecolor('#16213e')
             a.tick_params(colors='white', labelsize=7)
@@ -497,7 +496,8 @@ if st.session_state.results and st.session_state.step >= 2:
             a.spines['top'].set_color('#444')
             a.spines['left'].set_color('#444')
             a.spines['right'].set_color('#444')
-            a.label_outer()
+        ax.xaxis.set_visible(False)
+        ax_rsi.xaxis.set_visible(False)
 
         colors = {'초반 집중형': '#e74c3c', '중반 집중형': '#f39c12', '후반 집중형': '#2ecc71'}
         xticks_idx = list(range(0, len(dates_list), max(1, len(dates_list)//8)))
@@ -507,7 +507,7 @@ if st.session_state.results and st.session_state.step >= 2:
             rate   = (totals[-1] / totals[0] - 1) * 100
             ax.plot(range(len(dates_list)), totals,
                     label=f'{name}  {totals[-1]:,.0f}원 ({rate:+.1f}%)',
-                    color=colors[name], linewidth=2.5)
+                    color=colors[name], linewidth=1.5)
 
             # 매수 시점 표시
             buy_log = st.session_state.results_stats[name]['buy_log'] if 'results_stats' in st.session_state else []
@@ -559,24 +559,7 @@ if st.session_state.results and st.session_state.step >= 2:
                             linestyle=':', alpha=0.9,
                             label=f'QQQ 100% 홀딩  {qqq_krw[-1]:,.0f}원 ({qqq_rate:+.1f}%)')
 
-        # QQQ 가격 패널 (ax_qqq)
-        if qqq_data is not None and len(qqq_data) > 0:
-            qqq_dates2 = [str(d.date()) for d in qqq_data.index]
-            qqq_idx2, qqq_vals2 = [], []
-            for i, d in enumerate(dates_list):
-                if d in qqq_dates2:
-                    idx2 = qqq_dates2.index(d)
-                    v = float(qqq_data.iloc[idx2])
-                    if not pd.isna(v):
-                        qqq_idx2.append(i)
-                        qqq_vals2.append(v)
-            if qqq_vals2:
-                ax_qqq.plot(qqq_idx2, qqq_vals2, color='#74b9ff', linewidth=1.5)
-                ax_qqq.fill_between(qqq_idx2, qqq_vals2, min(qqq_vals2),
-                                    color='#74b9ff', alpha=0.15)
-                ax_qqq.set_xlim(0, len(dates_list)-1)
-                ax_qqq.set_ylabel('QQQ', color='white', fontsize=8)
-                ax_qqq.set_xticks([])
+        # QQQ 패널 제거 (메인 차트에 통합)
 
         ax.set_xticks(xticks_idx)
         ax.set_xticklabels([dates_list[i][:7] for i in xticks_idx], rotation=45, color='white')
