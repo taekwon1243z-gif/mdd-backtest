@@ -757,11 +757,11 @@ if st.session_state.selected_strategy and st.session_state.step >= 3:
 
             st.subheader('📍 다음 매수 구간 안내')
             strategy_table = STRATEGIES[st.session_state.selected_strategy]
-            next_levels = [(level, ratio) for level, ratio in strategy_table if level > cur_mdd]
-            triggered   = [(level, ratio) for level, ratio in strategy_table if level <= cur_mdd]
+            next_levels = [(level, ratio) for level, ratio in strategy_table if level < cur_mdd]
+            triggered   = [(level, ratio) for level, ratio in strategy_table if level >= cur_mdd]
 
             if next_levels:
-                next_level = max(next_levels, key=lambda x: x[0])
+                next_level = min(next_levels, key=lambda x: x[0])
                 st.info(f'현재 MDD {cur_mdd:.1f}% → 다음 매수 구간: **{next_level[0]}%** (현금풀의 {next_level[1]*100:.0f}% 투입)')
             if triggered:
                 st.success(f'이미 진입한 구간: {[l for l,r in triggered]}')
