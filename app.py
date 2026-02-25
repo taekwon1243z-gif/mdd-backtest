@@ -473,6 +473,10 @@ with st.expander('① 기본 설정', expanded=st.session_state.step == 1):
         with col_d2:
             dca_day = st.slider("매월 몇 일에 매수?", min_value=1, max_value=28, value=1)
         st.caption(f"매월 {dca_day}일에 {dca_amount_krw:,}원씩 자동 매수")
+    is_dotcom = start_str and start_str.startswith('2000')
+    if is_dotcom:
+        st.warning('⚠️ 닷컴버블 구간은 합성 데이터 + 긴 기간으로 메모리가 많이 필요합니다. 전략 1개만 선택해주세요.')
+        dotcom_strategy = st.radio('계산할 전략 선택', list(STRATEGIES.keys()), horizontal=True)
     if st.button("📊 백테스트 실행", type="primary"):
         with st.spinner('데이터 로딩 중... (최초 1회는 30초 정도 걸려요)'):
             try:
@@ -484,7 +488,8 @@ with st.expander('① 기본 설정', expanded=st.session_state.step == 1):
                 vault_usd  = vault_krw / start_fx if use_vault else 0
 
                 results = {}; all_stats = {}
-                for name, table in STRATEGIES.items():
+                strategy_items = [(dotcom_strategy, STRATEGIES[dotcom_strategy])] if is_dotcom else STRATEGIES.items()
+                for name, table in strategy_items:
                     h, s = run_backtest(table, tqqq, fx_dict, fx_sorted,
                                         seed_usd, use_vault, vault_usd, vault_trigger,
                                         use_next_open=use_next_open, tqqq_open=tqqq_open,
