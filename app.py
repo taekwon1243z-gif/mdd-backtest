@@ -39,18 +39,22 @@ def load_data(start, end):
     import time
     for attempt in range(3):
         try:
-            tqqq = yf.download('TQQQ', start=start, end=end, progress=False, auto_adjust=False)
+            raw  = yf.download('TQQQ', start=start, end=end, progress=False, auto_adjust=False)
             fx   = yf.download('USDKRW=X', start=start, end=end, progress=False, auto_adjust=False)
-            if 'Close' in tqqq.columns:
-                tqqq = tqqq['Close'].dropna().squeeze()
+            if 'Close' in raw.columns:
+                tqqq = raw['Close'].dropna().squeeze()
             else:
-                tqqq = tqqq.iloc[:, 0].dropna().squeeze()
+                tqqq = raw.iloc[:, 0].dropna().squeeze()
+            if 'Open' in raw.columns:
+                tqqq_open = raw['Open'].reindex(tqqq.index).ffill().squeeze()
+            else:
+                tqqq_open = tqqq.copy()
             if 'Close' in fx.columns:
                 fx = fx['Close'].dropna().squeeze()
             else:
                 fx = fx.iloc[:, 0].dropna().squeeze()
             if len(tqqq) > 0 and len(fx) > 0:
-                return tqqq, fx
+                return tqqq, fx, tqqq_open
         except Exception as e:
             pass
         time.sleep(2)
@@ -63,7 +67,7 @@ def get_fx(fx_dict, fx_sorted, date_str):
     past = [d for d in fx_sorted if d <= date_str]
     return fx_dict[past[-1]] if past else 1350
 
-def run_backtest(buy_table, tqqq, fx_dict, fx_sorted, seed_usd, use_vault, vault_usd, vault_trigger):
+def run_backtest(buy_table, tqqq, fx_dict, fx_sorted, seed_usd, use_vault, vault_usd, vault_trigger, use_next_open=False, tqqq_open=None):
     dates  = tqqq.index.tolist()
     prices = tqqq.tolist()
     vault_table = make_vault_table(vault_trigger)
@@ -88,9 +92,16 @@ def run_backtest(buy_table, tqqq, fx_dict, fx_sorted, seed_usd, use_vault, vault
     history = []; buy_log = []; rebalance_log = []
     buy_count = 0; vault_buy_count = 0; rebalance_count = 0
 
-    for date, price in zip(dates, prices):
+    opens = tqqq_open.tolist() if tqqq_open is not None else prices
+
+    for i, (date, price) in enumerate(zip(dates, prices)):
         date_str = str(date.date())
         fx = get_fx(fx_dict, fx_sorted, date_str)
+        # 매수 체결가: 다음날 시가 or 당일 종가
+        if use_next_open and tqqq_open is not None and i + 1 < len(opens):
+            buy_price = opens[i + 1]  # 다음날 시가
+        else:
+            buy_price = price  # 당일 종가
 
         if price > peak:
             peak = price
@@ -112,11 +123,11 @@ def run_backtest(buy_table, tqqq, fx_dict, fx_sorted, seed_usd, use_vault, vault
         for level, ratio in buy_table:
             if mdd <= level and level not in bought_levels:
                 invest = total_cash_pool * ratio
-                buy_shares = math.floor(invest / price)
-                actual_cost = buy_shares * price
+                buy_shares = math.floor(invest / buy_price)
+                actual_cost = buy_shares * buy_price
                 if buy_shares >= 1 and cash >= actual_cost:
                     tqqq_shares += buy_shares; cash -= actual_cost; buy_count += 1
-                    buy_log.append({'date': date_str, 'price': round(price,2),
+                    buy_log.append({'date': date_str, 'price': round(buy_price,2),
                         'mdd': round(mdd,2), 'level': level, 'shares': buy_shares,
                         'shares_total': tqqq_shares,
                         'cost_krw': round(actual_cost*fx,0), 'source': '현금풀',
@@ -127,11 +138,11 @@ def run_backtest(buy_table, tqqq, fx_dict, fx_sorted, seed_usd, use_vault, vault
             for level, ratio in vault_table:
                 if mdd <= level and level not in vault_levels:
                     invest = total_vault * ratio
-                    buy_shares = math.floor(invest / price)
-                    actual_cost = buy_shares * price
+                    buy_shares = math.floor(invest / buy_price)
+                    actual_cost = buy_shares * buy_price
                     if buy_shares >= 1 and vault >= actual_cost:
                         tqqq_shares += buy_shares; vault -= actual_cost; vault_buy_count += 1
-                        buy_log.append({'date': date_str, 'price': round(price,2),
+                        buy_log.append({'date': date_str, 'price': round(buy_price,2),
                             'mdd': round(mdd,2), 'level': level, 'shares': buy_shares,
                             'shares_total': tqqq_shares,
                             'cost_krw': round(actual_cost*fx,0), 'source': '금고',
@@ -400,7 +411,7 @@ with st.expander('① 기본 설정', expanded=st.session_state.step == 1):
     if st.button('📊 백테스트 실행', type='primary'):
         with st.spinner('데이터 로딩 중... (최초 1회는 30초 정도 걸려요)'):
             try:
-                tqqq, fx_series = load_data(start_str, end_str)
+                tqqq, fx_series, tqqq_open = load_data(start_str, end_str)
                 fx_dict   = {str(d.date()): float(v) for d, v in zip(fx_series.index, fx_series.values)}
                 fx_sorted = sorted(fx_dict.keys())
                 start_fx  = get_fx(fx_dict, fx_sorted, str(tqqq.index[0].date()))
@@ -410,7 +421,8 @@ with st.expander('① 기본 설정', expanded=st.session_state.step == 1):
                 results = {}; all_stats = {}
                 for name, table in STRATEGIES.items():
                     h, s = run_backtest(table, tqqq, fx_dict, fx_sorted,
-                                        seed_usd, use_vault, vault_usd, vault_trigger)
+                                        seed_usd, use_vault, vault_usd, vault_trigger,
+                                        use_next_open=use_next_open, tqqq_open=tqqq_open)
                     results[name] = h; all_stats[name] = s
 
                 st.session_state.results      = results
@@ -475,7 +487,7 @@ if st.session_state.results and st.session_state.step >= 2:
                     return qqq, vix
                 except:
                     time.sleep(2)
-            return None, None
+            return None, None, None
 
         qqq_data, vix_data = load_extra(start_dt, end_dt)
 
