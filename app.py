@@ -482,19 +482,22 @@ if st.session_state.results and st.session_state.step >= 2:
             rs    = gain / loss
             return 100 - (100 / (1 + rs))
 
-        fig, axes = plt.subplots(3, 1, figsize=(12, 10),
-                                  gridspec_kw={'height_ratios': [4, 1.5, 1.5]})
+        fig, axes = plt.subplots(4, 1, figsize=(12, 8),
+                                  gridspec_kw={'height_ratios': [3.5, 1.0, 0.8, 0.8],
+                                               'hspace': 0.05})
         fig.patch.set_facecolor('#1a1a2e')
-        ax = axes[0]
-        ax_rsi = axes[1]
-        ax_vix = axes[2]
+        ax     = axes[0]   # 메인: 수익률
+        ax_qqq = axes[1]   # QQQ 가격
+        ax_rsi = axes[2]   # RSI (보조지표 1)
+        ax_vix = axes[3]   # VIX (보조지표 2, 맨 하단)
         for a in axes:
             a.set_facecolor('#16213e')
-            a.tick_params(colors='white')
+            a.tick_params(colors='white', labelsize=7)
             a.spines['bottom'].set_color('#444')
             a.spines['top'].set_color('#444')
             a.spines['left'].set_color('#444')
             a.spines['right'].set_color('#444')
+            a.label_outer()
 
         colors = {'초반 집중형': '#e74c3c', '중반 집중형': '#f39c12', '후반 집중형': '#2ecc71'}
         xticks_idx = list(range(0, len(dates_list), max(1, len(dates_list)//8)))
