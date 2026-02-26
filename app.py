@@ -190,6 +190,9 @@ def run_backtest(buy_table, tqqq, fx_dict, fx_sorted, seed_usd, use_vault, vault
                         'shares_total': tqqq_shares,
                         'cost_krw': round(actual_cost*fx,0), 'source': 'DCA',
                         'cash_after': round(cash,2), 'vault_after': round(vault,2)})
+                # 단순홀딩도 동일하게 DCA 적용 (공정 비교)
+                hold_dca_shares = math.floor(dca_amount_usd / buy_price)
+                hold_shares += hold_dca_shares
 
         total_usd = cash + tqqq_shares * price + vault
         # 주간 샘플링 (월요일 or 마지막 날만 저장) → 메모리 절약
