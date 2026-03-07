@@ -178,7 +178,7 @@ def run_backtest(buy_table, tqqq, fx_dict, fx_sorted, seed_krw, use_vault, vault
                                     'fx': round(fx,2),
                                     'cash_after_krw': cash_krw,
                                     'vault_after_krw': vault_krw})
-                bought_levels.add(level)
+                    bought_levels.add(level)  # 실제 매수 성공했을 때만 레벨 소비
 
         # 금고 분할매수
         if use_vault and vault_krw > 0:
