@@ -179,8 +179,9 @@ def run_backtest(buy_table, tqqq, fx_dict, fx_sorted, seed_krw, use_vault, vault
                                     'fx': round(fx,2)})
                 bought_levels.add(level)
 
-        # ── 금고 매수: 현금풀 완전 소진 후에만 ──
-        cash_exhausted = cash_krw < (total_cash_pool_krw * 0.05)  # 5% 미만이면 소진 간주
+        # ── 금고 매수: 현금풀로 TQQQ 1주도 못 살 때 투입 ──
+        min_buy_krw = buy_price * fx  # TQQQ 1주 매수에 필요한 원화
+        cash_exhausted = cash_krw < min_buy_krw
         if use_vault and vault_krw_bal > 0 and cash_exhausted:
             for level, ratio in vault_table:
                 if mdd <= level and level not in vault_levels:
