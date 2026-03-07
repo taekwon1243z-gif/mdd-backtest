@@ -94,29 +94,40 @@ def get_fx(fx_dict, fx_sorted, date_str):
     past = [d for d in fx_sorted if d <= date_str]
     return fx_dict[past[-1]] if past else 1350
 
-def run_backtest(buy_table, tqqq, fx_dict, fx_sorted, seed_usd, use_vault, vault_usd, vault_trigger,
-                 use_next_open=False, tqqq_open=None, use_dca=False, dca_amount_usd=0.0, dca_day=1, manual_buys=None):
+def run_backtest(buy_table, tqqq, fx_dict, fx_sorted, seed_krw, use_vault, vault_krw, vault_trigger,
+                 use_next_open=False, tqqq_open=None, use_dca=False, dca_amount_krw=0.0, dca_day=1, manual_buys=None):
+    """
+    핵심 설계:
+    - 현금풀/금고는 원화로 저장 (환율 변동에 무관)
+    - TQQQ 매수 시에만 그날 환율로 달러 환전
+    - 총자산 = TQQQ평가(달러×환율) + 현금풀(원화) + 금고(원화)
+    - 금고는 현금풀이 완전 소진된 이후에만 투입
+    """
+    import datetime as _dt
     dates = tqqq.index.tolist()
     prices = tqqq.tolist()
     vault_table = make_vault_table(vault_trigger)
     cash_ratio = 0.30; tqqq_ratio = 0.70
 
-    if use_vault:
-        tqqq_shares = math.floor((seed_usd * tqqq_ratio) / prices[0])
-        cash = seed_usd * cash_ratio + (seed_usd * tqqq_ratio - tqqq_shares * prices[0])
-        vault = vault_usd
-    else:
-        tqqq_shares = math.floor((seed_usd * tqqq_ratio) / prices[0])
-        cash = seed_usd * cash_ratio + (seed_usd * tqqq_ratio - tqqq_shares * prices[0])
-        vault = 0
+    # 시작환율로 초기 TQQQ 매수
+    start_fx = get_fx(fx_dict, fx_sorted, str(dates[0].date()))
+    seed_usd = seed_krw / start_fx
+
+    tqqq_shares = math.floor((seed_usd * tqqq_ratio) / prices[0])
+    leftover_usd = (seed_usd * tqqq_ratio - tqqq_shares * prices[0])
+    # 현금풀: 원화로 저장 (시드의 30% + 주수 반내림 잔돈)
+    cash_krw = seed_krw * cash_ratio + leftover_usd * start_fx
+    vault_krw_bal = vault_krw if use_vault else 0
 
     peak = prices[0]
     bought_levels = set(); vault_levels = set()
-    total_cash_pool = cash
-    # ✅ 버그2 수정: total_vault는 초기값 고정(비율 계산용), vault는 실제 잔액(차감용) - 분리 유지하되 buy_log에 vault 정확히 기록
-    total_vault = vault_usd  # 비율 계산 기준 (초기 설정값 고정)
-    total_seed_usd = seed_usd + vault_usd
+    total_cash_pool_krw = cash_krw          # 사이클 시작 시 현금풀 기준값 (원화 고정)
+    total_vault_krw = vault_krw             # 금고 비율 계산 기준 (원화 고정)
+
+    # 단순홀딩: 시드+금고 전액으로 비교
+    total_seed_usd = (seed_krw + vault_krw) / start_fx
     hold_shares = math.floor(total_seed_usd / prices[0])
+
     history = []; buy_log = []; rebalance_log = []
     buy_count = 0; vault_buy_count = 0; rebalance_count = 0
     opens = tqqq_open.tolist() if tqqq_open is not None else prices
@@ -130,12 +141,15 @@ def run_backtest(buy_table, tqqq, fx_dict, fx_sorted, seed_usd, use_vault, vault
         else:
             buy_price = price
 
+        # ── 신고가 갱신: 7:3 리밸런싱 ──
         if price > peak:
             peak = price
             old_shares = tqqq_shares
-            total = cash + tqqq_shares * price
-            new_shares = math.floor((total * tqqq_ratio) / price)
-            cash = total * cash_ratio + (total * tqqq_ratio - new_shares * price)
+            # 총자산을 원화로 계산해서 리밸런싱
+            total_krw_now = cash_krw + tqqq_shares * price * fx
+            tqqq_target_krw = total_krw_now * tqqq_ratio
+            new_shares = math.floor(tqqq_target_krw / (price * fx))
+            cash_krw = total_krw_now * cash_ratio + (tqqq_target_krw - new_shares * price * fx)
             if new_shares != old_shares:
                 action = '매수' if new_shares > old_shares else '매도'
                 rebalance_count += 1
@@ -143,78 +157,90 @@ def run_backtest(buy_table, tqqq, fx_dict, fx_sorted, seed_usd, use_vault, vault
                                       'shares_diff': abs(new_shares-old_shares), 'shares_after': new_shares})
             tqqq_shares = new_shares
             bought_levels = set(); vault_levels = set()
-            total_cash_pool = cash
+            total_cash_pool_krw = cash_krw  # 새 사이클 기준값 갱신
 
         mdd = (price - peak) / peak * 100
 
+        # ── 현금풀 매수 ──
         for level, ratio in buy_table:
             if mdd <= level and level not in bought_levels:
-                invest = total_cash_pool * ratio
-                buy_shares = math.floor(invest / buy_price)
-                actual_cost = buy_shares * buy_price
-                if buy_shares >= 1 and cash >= actual_cost:
-                    tqqq_shares += buy_shares; cash -= actual_cost; buy_count += 1
+                invest_krw = total_cash_pool_krw * ratio
+                buy_shares = math.floor(invest_krw / (buy_price * fx))
+                actual_cost_krw = buy_shares * buy_price * fx
+                if buy_shares >= 1 and cash_krw >= actual_cost_krw:
+                    tqqq_shares += buy_shares
+                    cash_krw -= actual_cost_krw
+                    buy_count += 1
                     buy_log.append({'date': date_str, 'price': round(buy_price,2), 'mdd': round(mdd,2),
                                     'level': level, 'shares': buy_shares, 'shares_total': tqqq_shares,
-                                    'cost_krw': round(actual_cost*fx,0), 'source': '현금풀',
-                                    'cash_after': round(cash,2),
-                                    'vault_after': round(vault,2)})  # ✅ 실제 vault 잔액 기록
+                                    'cost_krw': round(actual_cost_krw,0), 'source': '현금풀',
+                                    'cash_after_krw': round(cash_krw,0),
+                                    'vault_after_krw': round(vault_krw_bal,0),
+                                    'fx': round(fx,2)})
                 bought_levels.add(level)
 
-        if use_vault and vault > 0:
+        # ── 금고 매수: 현금풀 완전 소진 후에만 ──
+        cash_exhausted = cash_krw < (total_cash_pool_krw * 0.05)  # 5% 미만이면 소진 간주
+        if use_vault and vault_krw_bal > 0 and cash_exhausted:
             for level, ratio in vault_table:
                 if mdd <= level and level not in vault_levels:
-                    invest = total_vault * ratio  # 비율은 초기값 기준
-                    buy_shares = math.floor(invest / buy_price)
-                    actual_cost = buy_shares * buy_price
-                    if buy_shares >= 1 and vault >= actual_cost:
-                        tqqq_shares += buy_shares; vault -= actual_cost; vault_buy_count += 1
+                    invest_krw = total_vault_krw * ratio
+                    buy_shares = math.floor(invest_krw / (buy_price * fx))
+                    actual_cost_krw = buy_shares * buy_price * fx
+                    if buy_shares >= 1 and vault_krw_bal >= actual_cost_krw:
+                        tqqq_shares += buy_shares
+                        vault_krw_bal -= actual_cost_krw
+                        vault_buy_count += 1
                         buy_log.append({'date': date_str, 'price': round(buy_price,2), 'mdd': round(mdd,2),
                                         'level': level, 'shares': buy_shares, 'shares_total': tqqq_shares,
-                                        'cost_krw': round(actual_cost*fx,0), 'source': '금고',
-                                        'cash_after': round(cash,2),
-                                        'vault_after': round(vault,2)})  # ✅ 차감 후 실제 vault 잔액 기록
+                                        'cost_krw': round(actual_cost_krw,0), 'source': '금고',
+                                        'cash_after_krw': round(cash_krw,0),
+                                        'vault_after_krw': round(vault_krw_bal,0),
+                                        'fx': round(fx,2)})
                     vault_levels.add(level)
 
-        if use_dca and dca_amount_usd > 0:
+        # ── DCA ──
+        if use_dca and dca_amount_krw > 0:
             if date_str[8:10] == f'{dca_day:02d}':
-                buy_shares = math.floor(dca_amount_usd / buy_price)
-                actual_cost = buy_shares * buy_price
+                buy_shares = math.floor(dca_amount_krw / (buy_price * fx))
+                actual_cost_krw = buy_shares * buy_price * fx
                 if buy_shares >= 1:
                     tqqq_shares += buy_shares; buy_count += 1
                     buy_log.append({'date': date_str, 'price': round(buy_price,2), 'mdd': round(mdd,2),
                                     'level': 0, 'shares': buy_shares, 'shares_total': tqqq_shares,
-                                    'cost_krw': round(actual_cost*fx,0), 'source': 'DCA',
-                                    'cash_after': round(cash,2), 'vault_after': round(vault,2)})
-                hold_dca_shares = math.floor(dca_amount_usd / buy_price)
-                hold_shares += hold_dca_shares
+                                    'cost_krw': round(actual_cost_krw,0), 'source': 'DCA',
+                                    'cash_after_krw': round(cash_krw,0),
+                                    'vault_after_krw': round(vault_krw_bal,0),
+                                    'fx': round(fx,2)})
+                hold_shares += math.floor(dca_amount_krw / (buy_price * fx))
 
-        # ✅ 사용자 개입 매수
+        # ── 사용자 개입 매수 ──
         if manual_buys:
             for mb in manual_buys:
                 if mb['date'] == date_str:
-                    mb_usd = mb['amount_usd']
-                    buy_shares = math.floor(mb_usd / buy_price)
-                    actual_cost = buy_shares * buy_price
+                    invest_krw = mb['amount_krw']
+                    buy_shares = math.floor(invest_krw / (buy_price * fx))
+                    actual_cost_krw = buy_shares * buy_price * fx
                     if buy_shares >= 1:
                         tqqq_shares += buy_shares
-                        buy_log.append({
-                            'date': date_str, 'price': round(buy_price,2), 'mdd': round(mdd,2),
-                            'level': 0, 'shares': buy_shares, 'shares_total': tqqq_shares,
-                            'cost_krw': round(actual_cost*fx,0), 'source': '사용자개입',
-                            'cash_after': round(cash,2), 'vault_after': round(vault,2)
-                        })
+                        buy_log.append({'date': date_str, 'price': round(buy_price,2), 'mdd': round(mdd,2),
+                                        'level': 0, 'shares': buy_shares, 'shares_total': tqqq_shares,
+                                        'cost_krw': round(actual_cost_krw,0), 'source': '사용자개입',
+                                        'cash_after_krw': round(cash_krw,0),
+                                        'vault_after_krw': round(vault_krw_bal,0),
+                                        'fx': round(fx,2)})
 
-        total_usd = cash + tqqq_shares * price + vault
-        import datetime as _dt
+        total_krw = cash_krw + tqqq_shares * price * fx + vault_krw_bal
         _d = _dt.datetime.strptime(date_str, '%Y-%m-%d')
         if _d.weekday() == 0 or i == len(tqqq) - 1:
             history.append({
                 'date': date_str, 'price': round(price,2), 'mdd': round(mdd,2),
-                'tqqq_shares': tqqq_shares, 'total_usd': round(total_usd,2),
-                'total_krw': round(total_usd*fx,0),
-                'hold_usd': round(hold_shares*price,2), 'hold_krw': round(hold_shares*price*fx,0),
-                'fx': round(fx,2), 'cash_usd': round(cash,2), 'vault_usd': round(vault,2)
+                'tqqq_shares': tqqq_shares,
+                'total_krw': round(total_krw,0),
+                'hold_krw': round(hold_shares * price * fx, 0),
+                'fx': round(fx,2),
+                'cash_krw': round(cash_krw,0),
+                'vault_krw': round(vault_krw_bal,0)
             })
 
     stats = {'buy_count': buy_count, 'vault_buy_count': vault_buy_count,
@@ -342,7 +368,7 @@ L은 레버리지 배수, σ²는 변동성(분산)이다. TQQQ처럼 L=3이면 
 ### 만든 사람
 개인 투자에 대한 관심으로 시작해 여러 차례의 투자 실패를 경험했다. 그 경험이 금융에 대한 체계적 이해의 필요성을 깨닫게 했고, 금융투자분석사, 투자자산운용사, 신용분석사 자격증 취득으로 이어졌다. 이 사이트는 그 과정에서 직접 설계하고 검증한 전략을 구현한 결과물이며, 향후 포트폴리오로 활용될 예정이다.
 
-📎 [@running\_for\_freedom1](https://www.instagram.com/running_for_freedom1)
+📎 [@running_for_freedom1](https://www.instagram.com/running_for_freedom1)
 """)
 
 st.divider()
@@ -451,19 +477,16 @@ with st.expander('① 기본 설정', expanded=st.session_state.step == 1):
                 fx_dict = {str(d.date()): float(v) for d, v in zip(fx_series.index, fx_series.values)}
                 fx_sorted = sorted(fx_dict.keys())
                 start_fx = get_fx(fx_dict, fx_sorted, str(tqqq.index[0].date()))
-                seed_usd = seed_krw / start_fx
-                vault_usd = vault_krw / start_fx if use_vault else 0
                 results = {}; all_stats = {}
                 strategy_items = [(dotcom_strategy, STRATEGIES[dotcom_strategy])] if is_dotcom else STRATEGIES.items()
                 for name, table in strategy_items:
-                    h, s = run_backtest(table, tqqq, fx_dict, fx_sorted, seed_usd, use_vault, vault_usd, vault_trigger,
+                    h, s = run_backtest(table, tqqq, fx_dict, fx_sorted, seed_krw, use_vault, vault_krw, vault_trigger,
                                         use_next_open=use_next_open, tqqq_open=tqqq_open,
-                                        use_dca=use_dca, dca_amount_usd=dca_amount_krw/start_fx, dca_day=dca_day)
+                                        use_dca=use_dca, dca_amount_krw=dca_amount_krw, dca_day=dca_day)
                     results[name] = h; all_stats[name] = s
                 st.session_state.results = results
                 st.session_state.all_stats = all_stats
                 st.session_state.seed_krw = seed_krw
-                st.session_state.seed_usd = seed_usd
                 st.session_state.start_fx = start_fx
                 st.session_state.use_vault = use_vault
                 st.session_state.vault_krw = vault_krw
@@ -765,17 +788,17 @@ if st.session_state.results and st.session_state.step >= 2:
                         _fx_dict = st.session_state.fx_dict
                         _fx_sorted = sorted(_fx_dict.keys())
                         _start_fx = st.session_state.start_fx
-                        _manual_buys_usd = [{'date': mb['date'], 'amount_usd': mb['amount_krw'] / _start_fx}
+                        _manual_buys_usd = [{'date': mb['date'], 'amount_krw': mb['amount_krw']}
                                              for mb in mb_list]
                         _buy_table = STRATEGIES[name]
                         _seed_usd = st.session_state.seed_usd
                         _use_vault = st.session_state.use_vault
-                        _vault_usd = st.session_state.vault_krw / _start_fx if _use_vault else 0
+                        _vault_krw_val = st.session_state.vault_krw if _use_vault else 0
                         _vault_trigger = st.session_state.vault_trigger
 
                         h2, s2 = run_backtest(
                             _buy_table, _tqqq, _fx_dict, _fx_sorted,
-                            _seed_usd, _use_vault, _vault_usd, _vault_trigger,
+                            st.session_state.seed_krw, _use_vault, _vault_krw_val, _vault_trigger,
                             manual_buys=_manual_buys_usd
                         )
 
@@ -842,9 +865,9 @@ if st.session_state.results and st.session_state.step >= 2:
                     shares_after = b.get('shares_total', h_match['tqqq_shares'] if h_match else '-')
                     price_day = h_match['price'] if h_match else b['price']
                     eval_krw = round(shares_after * price_day * fx_val / 10000) if isinstance(shares_after, (int, float)) else '-'
-                    cash_remain = round(b.get('cash_after', 0) * fx_val / 10000) if 'cash_after' in b else '-'
+                    cash_remain = round(b.get('cash_after_krw', 0) / 10000) if 'cash_after_krw' in b else '-'
                     # ✅ 버그2 수정: vault_after는 이미 run_backtest에서 실제 차감 후 값으로 저장됨
-                    vault_remain = round(b.get('vault_after', 0) * fx_val / 10000) if 'vault_after' in b else '-'
+                    vault_remain = round(b.get('vault_after_krw', 0) / 10000) if 'vault_after_krw' in b else '-'
                     unified_log.append({
                         '_type': 'buy',
                         '날짜': b['date'],
@@ -865,8 +888,8 @@ if st.session_state.results and st.session_state.step >= 2:
                     eval_krw = round(shares_after * price_day * fx_val / 10000) if isinstance(shares_after, (int, float)) else '-'
                     cash_usd_val = h_match.get('cash_usd', 0) if h_match else 0
                     vault_usd_val = h_match.get('vault_usd', 0) if h_match else 0
-                    cash_remain = round(cash_usd_val * fx_val / 10000)
-                    vault_remain = round(vault_usd_val * fx_val / 10000)
+                    cash_remain = round(b.get('cash_after_krw', 0) / 10000)
+                    vault_remain = round(b.get('vault_after_krw', 0) / 10000)
                     unified_log.append({
                         '_type': 'rebalance',
                         '날짜': r['date'],
@@ -931,7 +954,7 @@ if st.session_state.results and st.session_state.step >= 2:
             return f'{val:+.1f}%'
 
         numeric_cols = [c for c in year_df.columns if c != '연도']
-        styled = year_df.style.applymap(color_rate, subset=numeric_cols).format(fmt_rate, subset=numeric_cols)
+        styled = year_df.style.map(color_rate, subset=numeric_cols).format(fmt_rate, subset=numeric_cols)
         st.dataframe(styled, use_container_width=True, hide_index=True)
         st.caption('💡 초록: 수익 / 빨강: 손실 | 해당 연도 첫 거래일 대비 마지막 거래일 기준')
 
