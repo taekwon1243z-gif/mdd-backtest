@@ -180,6 +180,21 @@ def run_backtest(buy_table, tqqq, fx_dict, fx_sorted, seed_krw, use_vault, vault
                                     'vault_after_krw': vault_krw})
                 bought_levels.add(level)
 
+        # 현금풀 잔액 소진 매수: 금고 투입 전에 현금풀 1주라도 살 수 있으면 먼저 소진
+        if use_vault and vault_krw > 0 and cash_krw >= round(buy_price * fx):
+            drain_shares = math.floor(cash_krw / (buy_price * fx))
+            drain_cost_krw = round(drain_shares * buy_price * fx)
+            if drain_shares >= 1:
+                tqqq_shares += drain_shares
+                cash_krw -= drain_cost_krw
+                buy_count += 1
+                buy_log.append({'date': date_str, 'price': round(buy_price,2), 'mdd': round(mdd,2),
+                                'level': -999, 'shares': drain_shares, 'shares_total': tqqq_shares,
+                                'cost_krw': drain_cost_krw, 'source': '현금풀(잔액소진)',
+                                'fx': round(fx,2),
+                                'cash_after_krw': cash_krw,
+                                'vault_after_krw': vault_krw})
+
         # 금고 분할매수
         if use_vault and vault_krw > 0:
             for level, ratio in vault_table:
