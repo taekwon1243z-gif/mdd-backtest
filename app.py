@@ -861,12 +861,11 @@ if st.session_state.results and st.session_state.step >= 2:
 
                 for b in s['buy_log']:
                     h_match = hist_dict.get(b['date'])
-                    fx_val = h_match['fx'] if h_match else 1350
+                    fx_val = b.get('fx', h_match['fx'] if h_match else 1350)
                     shares_after = b.get('shares_total', h_match['tqqq_shares'] if h_match else '-')
-                    price_day = h_match['price'] if h_match else b['price']
+                    price_day = b['price']
                     eval_krw = round(shares_after * price_day * fx_val / 10000) if isinstance(shares_after, (int, float)) else '-'
                     cash_remain = round(b.get('cash_after_krw', 0) / 10000) if 'cash_after_krw' in b else '-'
-                    # ✅ 버그2 수정: vault_after는 이미 run_backtest에서 실제 차감 후 값으로 저장됨
                     vault_remain = round(b.get('vault_after_krw', 0) / 10000) if 'vault_after_krw' in b else '-'
                     unified_log.append({
                         '_type': 'buy',
@@ -886,10 +885,8 @@ if st.session_state.results and st.session_state.step >= 2:
                     shares_after = h_match['tqqq_shares'] if h_match else '-'
                     price_day = h_match['price'] if h_match else r['price']
                     eval_krw = round(shares_after * price_day * fx_val / 10000) if isinstance(shares_after, (int, float)) else '-'
-                    cash_usd_val = h_match.get('cash_usd', 0) if h_match else 0
-                    vault_usd_val = h_match.get('vault_usd', 0) if h_match else 0
-                    cash_remain = round(b.get('cash_after_krw', 0) / 10000)
-                    vault_remain = round(b.get('vault_after_krw', 0) / 10000)
+                    cash_remain = round(h_match.get('cash_krw', 0) / 10000) if h_match else '-'
+                    vault_remain = round(h_match.get('vault_krw', 0) / 10000) if h_match else '-'
                     unified_log.append({
                         '_type': 'rebalance',
                         '날짜': r['date'],
@@ -917,7 +914,7 @@ if st.session_state.results and st.session_state.step >= 2:
                             return ['background-color: rgba(231,76,60,0.15)'] * len(row)
                         return [''] * len(row)
 
-                    if not use_vault_display or s['vault_buy_count'] == 0:
+                    if not use_vault_display:
                         df_unified = df_unified.drop(columns=['금고'], errors='ignore')
                     styled = df_unified.style.apply(highlight_row, axis=1)
                     row_h = 35
