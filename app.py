@@ -164,7 +164,11 @@ def run_backtest(buy_table, tqqq, fx_dict, fx_sorted, seed_krw, use_vault, vault
                 invest_usd = invest_krw / fx
                 buy_shares = math.floor(invest_usd / buy_price)
                 actual_cost_krw = round(buy_shares * buy_price * fx)
-                if buy_shares >= 1 and cash_krw >= actual_cost_krw:
+                # 현금이 부족하면 살 수 있는 만큼만 매수
+                if cash_krw < actual_cost_krw:
+                    buy_shares = math.floor(cash_krw / (buy_price * fx))
+                    actual_cost_krw = round(buy_shares * buy_price * fx)
+                if buy_shares >= 1:
                     tqqq_shares += buy_shares
                     cash_krw -= actual_cost_krw
                     buy_count += 1
@@ -184,7 +188,11 @@ def run_backtest(buy_table, tqqq, fx_dict, fx_sorted, seed_krw, use_vault, vault
                     invest_usd = invest_krw / fx
                     buy_shares = math.floor(invest_usd / buy_price)
                     actual_cost_krw = round(buy_shares * buy_price * fx)
-                    if buy_shares >= 1 and vault_krw >= actual_cost_krw:
+                    # 금고 잔액 부족하면 살 수 있는 만큼만 매수
+                    if vault_krw < actual_cost_krw:
+                        buy_shares = math.floor(vault_krw / (buy_price * fx))
+                        actual_cost_krw = round(buy_shares * buy_price * fx)
+                    if buy_shares >= 1:
                         tqqq_shares += buy_shares
                         vault_krw -= actual_cost_krw
                         vault_buy_count += 1
