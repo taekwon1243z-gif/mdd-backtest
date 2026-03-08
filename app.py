@@ -388,19 +388,6 @@ L은 레버리지 배수, σ²는 변동성(분산)이다. TQQQ처럼 L=3이면 
 """)
 
 st.divider()
-st.markdown('### 📬 투자 정보 & 업데이트 받기')
-st.caption('전략 업데이트, 시장 분석, 매수 타이밍 알림을 이메일로 받아보세요.')
-col_mail, col_btn = st.columns([3, 1])
-with col_mail:
-    email = st.text_input('이메일 주소', placeholder='example@email.com', label_visibility='collapsed')
-with col_btn:
-    if st.button('구독하기'):
-        if '@' in email and '.' in email:
-            st.success('✅ 구독 완료! 곧 소식을 전해드릴게요.')
-        else:
-            st.error('올바른 이메일 주소를 입력해주세요.')
-
-st.divider()
 st.markdown('''
 <div style="text-align: center; color: #888; font-size: 13px;">
 이 전략을 만들고 직접 운용 중인 창작자 →
