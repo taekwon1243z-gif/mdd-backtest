@@ -103,21 +103,24 @@ def test_level_reset_on_new_peak():
                                   SEED_KRW, False, 0, 50)
 
     minus10_buys = [b for b in stats['buy_log'] if b['level'] == -10]
-    assert len(minus10_buys) == 2,       f"-10% 레벨 매수가 {len(minus10_buys)}회 (기대: 2회)"
-    assert stats['rebalance_count'] >= 1, "신고가 갱신 시 리밸런싱 미발생"
+    assert len(minus10_buys) == 2, f"-10% 레벨 매수가 {len(minus10_buys)}회 (기대: 2회)"
+    # 리밸런싱은 밴드 초과 여부에 따라 발생 안 할 수 있음 → 별도 테스트(test_rebalance_band_*)에서 검증
 
 
 # ── 5. 리밸런싱 70/30 비율 검증 ───────────────────────
 def test_rebalancing_ratio():
-    """신고가 갱신 시 TQQQ 약 70% / 현금 약 30% 유지 (floor 오차 ±2% 허용)"""
-    # Day1: $50 (기준), Day2: $65 (신고가)
-    tqqq = make_tqqq([50.0, 65.0])
+    """신고가 갱신 + 밴드 초과 시 TQQQ 약 70% / 현금 약 30% 복원 (±2% 허용)"""
+    # $50 → $100 (100% 상승): 리밸런싱 전 TQQQ 비율 ≈ 82% → 밴드(5%) 초과 → 리밸런싱 발생
+    tqqq = make_tqqq([50.0, 100.0])
     fx_dict, fx_sorted = make_fx_dict(tqqq)
     history, stats = run_backtest(STRATEGY, tqqq, fx_dict, fx_sorted,
-                                  SEED_KRW, False, 0, 50)
+                                  SEED_KRW, False, 0, 50,
+                                  rebalance_band=0.05)
+
+    assert stats['rebalance_count'] >= 1, "밴드 초과했는데 리밸런싱 미발생"
 
     h = history[-1]
-    tqqq_value = h['tqqq_shares'] * 65.0 * FX
+    tqqq_value = h['tqqq_shares'] * 100.0 * FX
     cash_krw   = h['cash_krw']
     total      = tqqq_value + cash_krw
     tqqq_ratio = tqqq_value / total
@@ -156,7 +159,7 @@ def test_vault_trigger():
 
 # ── 8. 상승장 매수 0회 ────────────────────────────────
 def test_no_buy_in_uptrend():
-    """전고점을 계속 갱신하는 상승장 → 분할매수 0회, 리밸런싱만 발생"""
+    """전고점을 계속 갱신하는 상승장 → 분할매수 0회"""
     tqqq = make_tqqq([50.0, 52.0, 54.0, 56.0, 58.0, 60.0])
     fx_dict, fx_sorted = make_fx_dict(tqqq)
     history, stats = run_backtest(STRATEGY, tqqq, fx_dict, fx_sorted,
@@ -164,7 +167,61 @@ def test_no_buy_in_uptrend():
 
     assert stats['buy_count']       == 0, f"상승장에서 매수 발생: {stats['buy_count']}회"
     assert stats['vault_buy_count'] == 0
-    assert stats['rebalance_count'] >= 1, "상승장에서 리밸런싱 미발생"
+
+
+# ── 11. 리밸런싱 밴드: 소폭 상승 → 리밸런싱 안 함 ────
+def test_rebalance_band_no_trigger():
+    """5% 밴드 설정 시 소폭 신고가(TQQQ 비율 밴드 내) → 리밸런싱 없음"""
+    # $50 → $60 (20% 상승): 리밸런싱 전 TQQQ 비율 ≈ 73.3% → 밴드(5%) 이내 → 리밸런싱 없음
+    tqqq = make_tqqq([50.0, 60.0])
+    fx_dict, fx_sorted = make_fx_dict(tqqq)
+    history, stats = run_backtest(STRATEGY, tqqq, fx_dict, fx_sorted,
+                                  SEED_KRW, False, 0, 50,
+                                  rebalance_band=0.05)
+
+    assert stats['rebalance_count'] == 0, \
+        f"밴드 내 소폭 상승에서 리밸런싱 발생: {stats['rebalance_count']}회"
+
+
+# ── 12. 리밸런싱 밴드: 대폭 상승 → 리밸런싱 함 ─────
+def test_rebalance_band_triggers():
+    """5% 밴드 설정 시 대폭 신고가(TQQQ 비율 밴드 초과) → 리밸런싱 발생"""
+    # $50 → $100 (100% 상승): 리밸런싱 전 TQQQ 비율 ≈ 82% → 밴드(5%) 초과 → 리밸런싱 발생
+    tqqq = make_tqqq([50.0, 100.0])
+    fx_dict, fx_sorted = make_fx_dict(tqqq)
+    history, stats = run_backtest(STRATEGY, tqqq, fx_dict, fx_sorted,
+                                  SEED_KRW, False, 0, 50,
+                                  rebalance_band=0.05)
+
+    assert stats['rebalance_count'] >= 1, "밴드 초과 대폭 상승에서 리밸런싱 미발생"
+
+
+# ── 13. 갭다운 보호: 가장 깊은 레벨 1개만 매수 ──────
+def test_gap_protection_deepest_only():
+    """갭다운 보호 ON: $50 → $35 (-30%) 갭다운 시 -30% 레벨 1개만 매수"""
+    tqqq = make_tqqq([50.0, 35.0])
+    fx_dict, fx_sorted = make_fx_dict(tqqq)
+    history, stats = run_backtest(STRATEGY, tqqq, fx_dict, fx_sorted,
+                                  SEED_KRW, False, 0, 50,
+                                  gap_protection=True)
+
+    # 매수는 정확히 1회 (가장 깊은 레벨 -30%만)
+    assert stats['buy_count'] == 1, f"갭다운 보호 시 매수 {stats['buy_count']}회 (기대: 1회)"
+    assert stats['buy_log'][0]['level'] == -30, \
+        f"매수 레벨 오류: {stats['buy_log'][0]['level']} (기대: -30)"
+
+
+# ── 14. 갭다운 보호 OFF: 모든 레벨 동시 매수 ────────
+def test_gap_protection_off_all_levels():
+    """갭다운 보호 OFF: $50 → $35 (-30%) 갭다운 시 -5%~-30% 모든 레벨 매수"""
+    tqqq = make_tqqq([50.0, 35.0])
+    fx_dict, fx_sorted = make_fx_dict(tqqq)
+    history, stats = run_backtest(STRATEGY, tqqq, fx_dict, fx_sorted,
+                                  SEED_KRW, False, 0, 50,
+                                  gap_protection=False)
+
+    # -5%, -10%, -15%, -20%, -25%, -30% → 6개 레벨 모두 트리거
+    assert stats['buy_count'] == 6, f"전체 레벨 매수 {stats['buy_count']}회 (기대: 6회)"
 
 
 # ── 9. make_vault_table 레벨 검증 ────────────────────

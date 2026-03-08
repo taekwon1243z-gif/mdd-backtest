@@ -16,7 +16,8 @@ def make_vault_table(trigger):
 
 
 def run_backtest(buy_table, tqqq, fx_dict, fx_sorted, seed_krw, use_vault, vault_krw_init, vault_trigger,
-                 use_next_open=False, tqqq_open=None, use_dca=False, dca_amount_krw=0.0, dca_day=1, manual_buys=None):
+                 use_next_open=False, tqqq_open=None, use_dca=False, dca_amount_krw=0.0, dca_day=1,
+                 manual_buys=None, rebalance_band=0.05, gap_protection=False):
     """
     현금풀/금고 원화 저장 방식 엔진.
     - 현금풀/금고 잔액은 원화로 고정 저장 → 환율 변동에 흔들리지 않음
@@ -24,6 +25,12 @@ def run_backtest(buy_table, tqqq, fx_dict, fx_sorted, seed_krw, use_vault, vault
     - 현금풀 레벨은 항상 소비(돈 없어도), 부족하면 있는 만큼 매수
     - 금고 첫 투입 직전 현금풀 잔액 완전 소진 (딱 한 번)
     - 금고 레벨도 항상 소비, 부족하면 있는 만큼 매수
+
+    rebalance_band: TQQQ 비율이 목표(70%)에서 이 값 이상 벗어날 때만 리밸런싱
+                    0.0 = 신고가마다 항상 리밸런싱 (기존 방식)
+                    0.05 = ±5% 벗어날 때만 (권장)
+    gap_protection: True = 갭다운 시 가장 깊은 레벨 1개만 매수 (중간 레벨은 소비 처리)
+                    False = 통과한 모든 레벨 동시 매수 (기존 방식)
     """
     dates = tqqq.index.tolist()
     prices = tqqq.tolist()
@@ -67,26 +74,55 @@ def run_backtest(buy_table, tqqq, fx_dict, fx_sorted, seed_krw, use_vault, vault
         if price > peak:
             peak = price
             total_krw = cash_krw + tqqq_shares * price * fx
-            new_shares = math.floor((total_krw * tqqq_ratio) / (price * fx))
-            leftover = round(total_krw * tqqq_ratio - new_shares * price * fx)
-            old_shares = tqqq_shares
-            tqqq_shares = new_shares
-            cash_krw = round(total_krw * cash_ratio) + leftover
-            if new_shares != old_shares:
-                action = '매수' if new_shares > old_shares else '매도'
-                rebalance_count += 1
-                rebalance_log.append({'date': date_str, 'price': round(price, 2), 'action': action,
-                                      'shares_diff': abs(new_shares - old_shares), 'shares_after': new_shares})
+            tqqq_ratio_actual = (tqqq_shares * price * fx) / total_krw if total_krw > 0 else 0
+
+            # 리밸런싱: 비율이 밴드 밖으로 벗어났을 때만 실행
+            if abs(tqqq_ratio_actual - tqqq_ratio) > rebalance_band:
+                new_shares = math.floor((total_krw * tqqq_ratio) / (price * fx))
+                leftover = round(total_krw * tqqq_ratio - new_shares * price * fx)
+                old_shares = tqqq_shares
+                tqqq_shares = new_shares
+                cash_krw = round(total_krw * cash_ratio) + leftover
+                if new_shares != old_shares:
+                    action = '매수' if new_shares > old_shares else '매도'
+                    rebalance_count += 1
+                    rebalance_log.append({'date': date_str, 'price': round(price, 2), 'action': action,
+                                          'shares_diff': abs(new_shares - old_shares), 'shares_after': new_shares})
+
+            # 신고가 → 레벨 리셋은 항상 (리밸런싱 여부와 무관)
             bought_levels = set()
             vault_levels = set()
-            cash_drained = False   # 리밸런싱 후 새 사이클 시작
+            cash_drained = False
             total_cash_pool_krw = cash_krw
 
         mdd = (price - peak) / peak * 100
 
         # ── 현금풀 분할매수 ──
-        for level, ratio in buy_table:
-            if mdd <= level and level not in bought_levels:
+        triggered = [(level, ratio) for level, ratio in buy_table
+                     if mdd <= level and level not in bought_levels]
+
+        if gap_protection and triggered:
+            # 갭다운 보호: 가장 깊은 레벨 1개만 실제 매수, 나머지는 레벨만 소비
+            deepest_level, deepest_ratio = min(triggered, key=lambda x: x[0])
+            for level, _ in triggered:
+                bought_levels.add(level)  # 중간 레벨 모두 소비 처리
+            invest_krw = total_cash_pool_krw * deepest_ratio
+            buy_shares = math.floor(invest_krw / (buy_price * fx))
+            if buy_shares * buy_price * fx > cash_krw:
+                buy_shares = math.floor(cash_krw / (buy_price * fx))
+            actual_cost_krw = round(buy_shares * buy_price * fx)
+            if buy_shares >= 1:
+                tqqq_shares += buy_shares
+                cash_krw -= actual_cost_krw
+                buy_count += 1
+                buy_log.append({'date': date_str, 'price': round(buy_price, 2), 'mdd': round(mdd, 2),
+                                'level': deepest_level, 'shares': buy_shares, 'shares_total': tqqq_shares,
+                                'cost_krw': actual_cost_krw, 'source': '현금풀',
+                                'fx': round(fx, 2),
+                                'cash_after_krw': cash_krw, 'vault_after_krw': vault_krw})
+        else:
+            # 기존 방식: 통과한 모든 레벨 순차 매수
+            for level, ratio in triggered:
                 invest_krw = total_cash_pool_krw * ratio
                 buy_shares = math.floor(invest_krw / (buy_price * fx))
                 # 잔액 부족하면 있는 만큼
