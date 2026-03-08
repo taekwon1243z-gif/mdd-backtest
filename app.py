@@ -115,7 +115,7 @@ if 'step' not in st.session_state: st.session_state.step = 1
 if 'results' not in st.session_state: st.session_state.results = None
 if 'selected_strategy' not in st.session_state: st.session_state.selected_strategy = None
 
-tab_main, tab_qna = st.tabs(['📊 백테스터', '❓ Q&A'])
+tab_main, tab_basis, tab_qna = st.tabs(['📊 백테스터', '📐 전략 설계 근거', '❓ Q&A'])
 
 with tab_main:
 
@@ -876,6 +876,201 @@ if st.session_state.selected_strategy and st.session_state.step >= 3:
                     f'- 현재가 기준 평가금액: **{total_shares * cur_price * cur_fx:,.0f}원**'
                 )
         st.session_state.step = 4
+
+# ── 전략 설계 근거 탭 ──
+with tab_basis:
+    st.markdown('## 📐 전략 설계 근거')
+    st.caption('이 전략의 비율과 구조는 직관이 아니라 QQQ 역사 데이터에서 도출됐습니다.')
+
+    @st.cache_data(show_spinner=False)
+    def load_qqq_for_basis():
+        import time
+        for _ in range(3):
+            try:
+                qqq = yf.download('QQQ', start='1999-03-10', progress=False, auto_adjust=True)
+                if 'Close' in qqq.columns:
+                    return qqq['Close'].dropna().squeeze()
+                return qqq.iloc[:, 0].dropna().squeeze()
+            except:
+                time.sleep(2)
+        return None
+
+    def calc_mdd_series(prices):
+        peak = prices.iloc[0]
+        mdd_list, peak_list = [], []
+        for p in prices:
+            if p > peak:
+                peak = p
+            mdd_list.append((p - peak) / peak * 100)
+            peak_list.append(peak)
+        return pd.Series(mdd_list, index=prices.index), pd.Series(peak_list, index=prices.index)
+
+    def find_episodes(mdd_series, threshold):
+        episodes = []
+        in_ep = False
+        start_date = None
+        worst = 0
+        for date, mdd in zip(mdd_series.index, mdd_series.values):
+            if not in_ep and mdd <= threshold:
+                in_ep = True
+                start_date = date
+                worst = mdd
+            elif in_ep:
+                worst = min(worst, mdd)
+                if mdd >= -0.01:
+                    episodes.append({
+                        '시작': str(start_date.date()),
+                        '종료': str(date.date()),
+                        '기간(일)': (date - start_date).days,
+                        '최대 낙폭': round(worst, 1),
+                    })
+                    in_ep = False
+                    worst = 0
+        if in_ep:
+            episodes.append({
+                '시작': str(start_date.date()),
+                '종료': '진행 중',
+                '기간(일)': (mdd_series.index[-1] - start_date).days,
+                '최대 낙폭': round(worst, 1),
+            })
+        return episodes
+
+    with st.spinner('QQQ 1999년 이후 데이터 로딩 중...'):
+        qqq_hist = load_qqq_for_basis()
+
+    if qqq_hist is not None:
+        mdd_series, peak_series = calc_mdd_series(qqq_hist)
+        thresholds = [-10, -20, -30, -40, -50]
+
+        # ── 1. 낙폭 빈도 요약 ──
+        st.subheader('① QQQ 낙폭 빈도 분석 (1999년 ~ 현재)')
+        st.caption('나스닥 100 ETF(QQQ) 1999년 상장 이후 각 MDD 구간이 발생한 횟수와 평균 지속 기간')
+
+        summary_rows = []
+        all_episodes = {}
+        for t in thresholds:
+            eps = find_episodes(mdd_series, t)
+            all_episodes[t] = eps
+            completed = [e for e in eps if e['종료'] != '진행 중']
+            ongoing   = [e for e in eps if e['종료'] == '진행 중']
+            avg_dur   = round(sum(e['기간(일)'] for e in completed) / len(completed)) if completed else '-'
+            avg_worst = round(sum(e['최대 낙폭'] for e in eps) / len(eps), 1) if eps else '-'
+            freq_yr   = round(len(eps) / ((qqq_hist.index[-1] - qqq_hist.index[0]).days / 365), 1)
+            summary_rows.append({
+                'MDD 기준': f'{t}% 이하',
+                '발생 횟수': len(eps),
+                '연평균 발생': f'{freq_yr}회/년',
+                '평균 지속': f'{avg_dur}일' if avg_dur != '-' else '-',
+                '평균 최대 낙폭': f'{avg_worst}%',
+                '현재 진행': '⚠️ 진행 중' if ongoing else '—',
+            })
+
+        summary_df = pd.DataFrame(summary_rows)
+        st.dataframe(summary_df, use_container_width=True, hide_index=True)
+
+        # ── 2. 전략 설계 매핑 ──
+        st.subheader('② 데이터로 본 전략 설계 근거')
+
+        ep10 = all_episodes[-10]
+        ep20 = all_episodes[-20]
+        ep30 = all_episodes[-30]
+        ep40 = all_episodes[-40]
+
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            st.markdown('### 초반 집중형')
+            st.markdown(f'''
+**타깃**: MDD -5% ~ -20% 구간
+**빈도**: -10% 이하 **{len(ep10)}회** 발생 ({round(len(ep10)/((qqq_hist.index[-1]-qqq_hist.index[0]).days/365),1)}회/년)
+
+거의 **매년 발생**하는 일반적 조정 구간.
+상대적으로 얕고 회복이 빠르기 때문에 초반에 실탄을 집중해
+**평균 단가를 빠르게 낮추는 전략**.
+V자 반등 시 가장 큰 수익을 냅니다.
+''')
+        with col2:
+            st.markdown('### 중반 집중형')
+            st.markdown(f'''
+**타깃**: MDD -20% ~ -40% 구간
+**빈도**: -20% 이하 **{len(ep20)}회** 발생 ({round(len(ep20)/((qqq_hist.index[-1]-qqq_hist.index[0]).days/365),1)}회/년)
+
+**수년에 한 번** 발생하는 본격 하락장.
+2018년 Q4(-23%), 2020년 코로나(-30%), 2022년 금리 충격(-35%)이 해당.
+회복까지 6개월 ~ 2년이 걸리므로
+**중간 구간에 실탄을 고르게 배분**하는 전략.
+''')
+        with col3:
+            st.markdown('### 후반 집중형')
+            st.markdown(f'''
+**타깃**: MDD -35% ~ -50% 구간
+**빈도**: -30% 이하 **{len(ep30)}회** 발생 ({round(len(ep30)/((qqq_hist.index[-1]-qqq_hist.index[0]).days/365),1)}회/년)
+
+2000년 닷컴버블(-83%), 2008년 금융위기(-54%).
+**10년에 한 번** 수준의 구조적 베어마켓.
+회복까지 수년이 걸리지만 저점에서 최대 매집 시
+복리 회복 효과가 극대화됩니다.
+''')
+
+        # ── 3. 에피소드 상세 ──
+        st.subheader('③ 주요 낙폭 에피소드 상세')
+        sel_threshold = st.selectbox('기준 낙폭 선택', thresholds, format_func=lambda x: f'MDD {x}% 이하')
+        eps_df = pd.DataFrame(all_episodes[sel_threshold])
+        if not eps_df.empty:
+            eps_df = eps_df.sort_values('시작', ascending=False).reset_index(drop=True)
+            eps_df['최대 낙폭'] = eps_df['최대 낙폭'].apply(lambda x: f'{x:.1f}%')
+            eps_df['기간(일)'] = eps_df['기간(일)'].apply(lambda x: f'{x:,}일')
+            st.dataframe(eps_df, use_container_width=True, hide_index=True)
+            st.caption(f'총 {len(eps_df)}회 발생 | 종료된 에피소드 기준 (회복 = 신고가 달성)')
+
+        # ── 4. QQQ MDD 차트 ──
+        st.subheader('④ QQQ MDD 전체 히스토리')
+        import plotly.graph_objects as go
+        fig_mdd = go.Figure()
+        fig_mdd.add_trace(go.Scatter(
+            x=[str(d.date()) for d in mdd_series.index],
+            y=mdd_series.values,
+            fill='tozeroy',
+            fillcolor='rgba(231,76,60,0.25)',
+            line=dict(color='#e74c3c', width=1),
+            name='QQQ MDD',
+            hovertemplate='%{x}<br>MDD: %{y:.1f}%<extra></extra>'
+        ))
+        for t, color in [(-10,'#f39c12'),(-20,'#e67e22'),(-30,'#e74c3c'),(-40,'#c0392b'),(-50,'#922b21')]:
+            fig_mdd.add_hline(y=t, line_color=color, line_dash='dot', line_width=1,
+                              annotation_text=f'{t}%', annotation_font_color=color)
+        fig_mdd.update_layout(
+            height=350, paper_bgcolor='#1a1a2e', plot_bgcolor='#16213e',
+            font=dict(color='white'), margin=dict(l=40, r=20, t=20, b=40),
+            yaxis=dict(gridcolor='rgba(255,255,255,0.1)', tickfont=dict(color='white'), ticksuffix='%'),
+            xaxis=dict(gridcolor='rgba(255,255,255,0.1)', tickfont=dict(color='white')),
+        )
+        st.plotly_chart(fig_mdd, use_container_width=True)
+
+        # ── 5. 금고 설계 근거 ──
+        st.subheader('⑤ 금고 설계 근거 — 기회비용과 헷지')
+        st.markdown(f'''
+현금을 금고로 보유하는 것은 **기회비용**이 발생합니다.
+MDD -30% 이하 에피소드는 {len(ep30)}회, 평균 발생 간격은 약 {round(((qqq_hist.index[-1]-qqq_hist.index[0]).days/365)/max(len(ep30),1),1)}년입니다.
+즉, 금고 자금은 평균 **수년간 현금으로 대기**해야 합니다.
+
+**개선 방향: 금 ETF(GLD)로 운용**
+
+| 구분 | 현금 보유 | 금 ETF(GLD) 보유 |
+|---|---|---|
+| 연평균 수익률 | ~0% (예금 제외) | ~7~8% (역사적) |
+| 주식과의 상관관계 | 중립 | **음(-)의 상관관계** |
+| 폭락장 역할 | 대기 | **자동 헷지 + 가치 상승** |
+| 유동성 | 즉시 | ETF → 즉시 매도 가능 |
+
+금 ETF는 주식 시장이 폭락할 때 가치가 상승하는 경향이 있습니다.
+금고를 GLD로 운용하면 **대기 기간 수익 + 폭락 시 자동 헷지** 두 효과를 동시에 얻을 수 있습니다.
+TQQQ 매수 트리거가 발동되면 GLD를 매도해 TQQQ를 매수하는 구조로 설계 가능합니다.
+
+> 이 기능은 향후 업데이트에서 구현 예정입니다.
+''')
+
+    else:
+        st.error('QQQ 데이터를 불러오지 못했습니다. 잠시 후 새로고침해주세요.')
 
 # ── Q&A 탭 ──
 with tab_qna:
