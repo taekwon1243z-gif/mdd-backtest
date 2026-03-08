@@ -196,32 +196,18 @@ def test_rebalance_band_triggers():
     assert stats['rebalance_count'] >= 1, "밴드 초과 대폭 상승에서 리밸런싱 미발생"
 
 
-# ── 13. 갭다운 보호: 가장 깊은 레벨 1개만 매수 ──────
-def test_gap_protection_deepest_only():
-    """갭다운 보호 ON: $50 → $35 (-30%) 갭다운 시 -30% 레벨 1개만 매수"""
+# ── 13. 갭다운: 통과한 모든 레벨 소급 매수 ──────────
+def test_gap_down_all_levels():
+    """$50 → $35 (-30%) 갭다운 시 -5%~-30% 모든 레벨을 현재가에 소급 매수"""
     tqqq = make_tqqq([50.0, 35.0])
     fx_dict, fx_sorted = make_fx_dict(tqqq)
     history, stats = run_backtest(STRATEGY, tqqq, fx_dict, fx_sorted,
-                                  SEED_KRW, False, 0, 50,
-                                  gap_protection=True)
+                                  SEED_KRW, False, 0, 50)
 
-    # 매수는 정확히 1회 (가장 깊은 레벨 -30%만)
-    assert stats['buy_count'] == 1, f"갭다운 보호 시 매수 {stats['buy_count']}회 (기대: 1회)"
-    assert stats['buy_log'][0]['level'] == -30, \
-        f"매수 레벨 오류: {stats['buy_log'][0]['level']} (기대: -30)"
-
-
-# ── 14. 갭다운 보호 OFF: 모든 레벨 동시 매수 ────────
-def test_gap_protection_off_all_levels():
-    """갭다운 보호 OFF: $50 → $35 (-30%) 갭다운 시 -5%~-30% 모든 레벨 매수"""
-    tqqq = make_tqqq([50.0, 35.0])
-    fx_dict, fx_sorted = make_fx_dict(tqqq)
-    history, stats = run_backtest(STRATEGY, tqqq, fx_dict, fx_sorted,
-                                  SEED_KRW, False, 0, 50,
-                                  gap_protection=False)
-
-    # -5%, -10%, -15%, -20%, -25%, -30% → 6개 레벨 모두 트리거
-    assert stats['buy_count'] == 6, f"전체 레벨 매수 {stats['buy_count']}회 (기대: 6회)"
+    # -5%, -10%, -15%, -20%, -25%, -30% → 6개 레벨 모두 트리거 (더 좋은 가격에 약정 이행)
+    assert stats['buy_count'] == 6, f"갭다운 시 레벨 매수 {stats['buy_count']}회 (기대: 6회)"
+    levels = [b['level'] for b in stats['buy_log']]
+    assert -30 in levels and -5 in levels, "모든 중간 레벨이 매수됐는지 확인"
 
 
 # ── 9. make_vault_table 레벨 검증 ────────────────────

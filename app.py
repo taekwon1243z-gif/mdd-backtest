@@ -284,25 +284,13 @@ with st.expander('① 기본 설정', expanded=st.session_state.step == 1):
                                 help="MDD 도달 당일 종가 대신 다음날 시가로 체결. 실전과 더 유사합니다.")
 
     st.markdown('**⚙️ 고급 설정**')
-    col_adv1, col_adv2 = st.columns(2)
-    with col_adv1:
-        rebalance_band_pct = st.slider(
-            '리밸런싱 민감도 (±%)',
-            min_value=0, max_value=15, value=5,
-            help='TQQQ 비율이 70%에서 이 값 이상 벗어날 때만 리밸런싱. 0이면 신고가마다 항상 실행 (비현실적).'
-        )
-        rebalance_band = rebalance_band_pct / 100
-        st.caption(f'TQQQ 비율이 {70 - rebalance_band_pct}%~{70 + rebalance_band_pct}% 벗어날 때만 리밸런싱')
-    with col_adv2:
-        gap_protection = st.checkbox(
-            '갭다운 보호 모드',
-            value=False,
-            help='하루에 여러 레벨이 동시 트리거되면 가장 깊은 레벨 1개만 매수. 실탄 과소진 방지.'
-        )
-        if gap_protection:
-            st.caption('✅ 갭다운 시 가장 깊은 레벨 1개만 실행, 나머지는 소비 처리')
-        else:
-            st.caption('통과한 모든 레벨 동시 실행 (기본)')
+    rebalance_band_pct = st.slider(
+        '리밸런싱 민감도 (±%)',
+        min_value=0, max_value=15, value=5,
+        help='TQQQ 비율이 70%에서 이 값 이상 벗어날 때만 리밸런싱. 0이면 신고가마다 항상 실행 (비현실적).'
+    )
+    rebalance_band = rebalance_band_pct / 100
+    st.caption(f'TQQQ 비율이 {70 - rebalance_band_pct}%~{70 + rebalance_band_pct}% 벗어날 때만 리밸런싱')
 
     use_dca = st.checkbox("📅 적립식 추매 (DCA) - 매월 고정 금액 자동 매수", value=False)
     dca_amount_krw = 0
@@ -333,7 +321,7 @@ with st.expander('① 기본 설정', expanded=st.session_state.step == 1):
                     h, s = run_backtest(table, tqqq, fx_dict, fx_sorted, seed_krw, use_vault, vault_krw if use_vault else 0, vault_trigger,
                                         use_next_open=use_next_open, tqqq_open=tqqq_open,
                                         use_dca=use_dca, dca_amount_krw=dca_amount_krw, dca_day=dca_day,
-                                        rebalance_band=rebalance_band, gap_protection=gap_protection)
+                                        rebalance_band=rebalance_band)
                     results[name] = h; all_stats[name] = s
                 st.session_state.results = results
                 st.session_state.all_stats = all_stats
