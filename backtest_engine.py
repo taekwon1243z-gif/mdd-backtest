@@ -204,140 +204,164 @@ def run_backtest(buy_table, tqqq, fx_dict, fx_sorted, seed_krw, use_vault, vault
 LEVELS = [-5, -10, -15, -20, -25, -30, -35, -40, -45, -50]
 
 
-def _extract_episodes(prices):
-    """
-    TQQQ 가격 시리즈에서 낙폭 에피소드를 추출한다.
-    에피소드 = ATH 대비 -5% 이하로 진입 후 ATH 회복까지.
-    """
-    prices = list(prices)
-    peak = prices[0]
-    mdd_vals = []
-    peak_vals = []
-    for p in prices:
-        if p > peak:
-            peak = p
-        mdd_vals.append((p - peak) / peak * 100)
-        peak_vals.append(peak)
-
-    episodes = []
-    in_ep = False
-    ep_start_i = 0
-    ep_bottom_mdd = 0.0
-
-    for i, (mdd, price, pk) in enumerate(zip(mdd_vals, prices, peak_vals)):
-        if not in_ep and mdd <= LEVELS[0]:   # -5% 진입
-            in_ep = True
-            ep_start_i = i
-            ep_bottom_mdd = mdd
-        elif in_ep:
-            if mdd < ep_bottom_mdd:
-                ep_bottom_mdd = mdd
-            if mdd >= -0.1:   # ATH 회복
-                episodes.append({
-                    'bottom_mdd': ep_bottom_mdd,
-                    'ath_price': pk,
-                    'prices': prices[ep_start_i:i + 1],
-                    'mdd_in_ep': mdd_vals[ep_start_i:i + 1],
-                    'completed': True,
-                })
-                in_ep = False
-                ep_bottom_mdd = 0.0
-
-    if in_ep:   # 진행 중 에피소드
-        episodes.append({
-            'bottom_mdd': ep_bottom_mdd,
-            'ath_price': peak_vals[-1],
-            'prices': prices[ep_start_i:],
-            'mdd_in_ep': mdd_vals[ep_start_i:],
-            'completed': False,
-        })
-
-    return episodes
-
-
 def _bottom_bucket(mdd, levels=LEVELS):
     """mdd가 속하는 버킷 인덱스 반환. 버킷 i = levels[i] ~ levels[i+1] 구간."""
     n = len(levels)
     for i in range(n - 1):
         if levels[i] >= mdd > levels[i + 1]:
             return i
-    return n - 1   # levels[-1] 이하
+    return n - 1
 
 
-def compute_optimal_ratios(prices, levels=None):
+def _extract_qqq_episodes(qqq_prices, threshold=-5.0):
     """
-    TQQQ 가격 시리즈로부터 데이터 기반 최적 분할매수 비율을 도출한다.
+    QQQ 가격에서 낙폭 에피소드를 추출한다.
+    에피소드 = QQQ ATH 대비 threshold% 이하 진입 ~ QQQ ATH 회복.
+    QQQ를 기준으로 쓰는 이유: 25년치 데이터가 완전히 완료된 에피소드로 구성됨.
+    """
+    prices = list(qqq_prices)
+    dates  = list(qqq_prices.index)
+    peak   = prices[0]
+
+    episodes = []
+    in_ep        = False
+    ep_start_i   = 0
+    ep_peak_price = prices[0]
+
+    for i, price in enumerate(prices):
+        if price > peak:
+            peak = price
+
+        mdd = (price - peak) / peak * 100
+
+        if not in_ep and mdd <= threshold:
+            in_ep         = True
+            ep_start_i    = i
+            ep_peak_price = peak          # 에피소드 시작 시점의 QQQ ATH
+
+        elif in_ep:
+            if price >= ep_peak_price * 0.999:   # QQQ ATH 회복
+                episodes.append({
+                    'start_i':    ep_start_i,
+                    'end_i':      i,
+                    'start_date': dates[ep_start_i],
+                    'end_date':   dates[i],
+                    'completed':  True,
+                })
+                in_ep = False
+
+    if in_ep:   # 현재 진행 중
+        episodes.append({
+            'start_i':    ep_start_i,
+            'end_i':      len(prices) - 1,
+            'start_date': dates[ep_start_i],
+            'end_date':   dates[-1],
+            'completed':  False,
+        })
+
+    return episodes
+
+
+def compute_optimal_ratios(qqq_prices, tqqq_prices, levels=None):
+    """
+    QQQ 에피소드 경계 + TQQQ 증분 하락 기반 최적 비율 도출.
 
     알고리즘
     --------
-    1. 에피소드 추출  (ATH → 저점 → ATH 회복)
-    2. P[i] = 해당 버킷이 에피소드 저점인 비율  (바닥 분포)
-    3. E[i] = 해당 레벨 첫 진입 시 ATH까지 평균 기대수익률
-    4. raw[i] = P[i] × E[i],  정규화 → 최적 비율
+    에피소드 정의: QQQ ATH 대비 -5% 이하 진입 ~ QQQ ATH 회복
+      → QQQ 기준: 닷컴버블(2000~2016 회복)도 완료 에피소드로 처리 가능
+      → 에피소드 수 29개 (QQQ 에피소드 기준)
 
-    Returns
-    -------
-    dict:
-        levels, n_episodes, bottom_counts, p_dist, e_return, raw_score, base_ratios
+    TQQQ MDD 기준: 에피소드 시작 시점 TQQQ 가격 = 100%
+      → "조정 시작점에서 TQQQ가 얼마나 더 내려가는가" 측정
+      → 합성 TQQQ 역산 ATH 오염 완전 제거
+
+    P[i]: 에피소드 내 TQQQ 증분 저점이 버킷 i에 속하는 비율
+    E[i]: TQQQ 레벨 i 첫 진입 → QQQ ATH 회복일 TQQQ 가격까지 수익률 평균
+    ratio ∝ P × E, 1% 플로어 후 정규화
+
+    Parameters
+    ----------
+    qqq_prices  : pd.Series  QQQ 종가 (1999~현재, auto_adjust=True)
+    tqqq_prices : pd.Series  합성+실제 TQQQ 종가 (1999~현재)
     """
     if levels is None:
         levels = LEVELS
     n = len(levels)
 
-    episodes = _extract_episodes(prices)
+    qqq  = qqq_prices.sort_index()
+    tqqq = tqqq_prices.sort_index()
+
+    episodes = _extract_qqq_episodes(qqq, threshold=-5.0)
     if not episodes:
         return None
 
-    # ── P 분포: 에피소드 저점이 각 버킷에 속하는 비율 ──
-    bottom_counts = [0] * n
-    for ep in episodes:
-        b = _bottom_bucket(ep['bottom_mdd'], levels)
-        bottom_counts[b] += 1
-    total = len(episodes)
-    p_dist = [c / total for c in bottom_counts]
-
-    # ── E 수익률: 각 레벨 첫 진입 → ATH까지 평균 수익률 ──
-    # 완료 에피소드만 사용 (진행 중 에피소드는 E 왜곡 방지)
+    bottom_counts    = [0] * n
     returns_by_level = [[] for _ in range(n)]
-    for ep in episodes:
-        if not ep['completed']:
-            continue
-        ep_prices = ep['prices']
-        ep_mdd = ep['mdd_in_ep']
-        ath = ep['ath_price']
-        for i, lvl in enumerate(levels):
-            for j, mdd in enumerate(ep_mdd):
-                if mdd <= lvl:
-                    ret = (ath / ep_prices[j] - 1) * 100
-                    returns_by_level[i].append(ret)
-                    break
+    ep_details       = []
 
+    for ep in episodes:
+        sd, ed = ep['start_date'], ep['end_date']
+
+        # 에피소드 구간 TQQQ 슬라이스
+        tqqq_ep = tqqq[(tqqq.index >= sd) & (tqqq.index <= ed)]
+        if len(tqqq_ep) < 5:
+            continue
+
+        # ★ TQQQ MDD = 에피소드 시작가 기준 증분 하락률
+        #   (합성 TQQQ 역산 ATH 오염 제거 — "조정 시작점에서 얼마나 더 빠지나" 측정)
+        ep_prices      = list(tqqq_ep)
+        ep_start_price = ep_prices[0]
+        ep_mdd_arr     = [(p / ep_start_price - 1) * 100 for p in ep_prices]
+        bottom_mdd     = min(ep_mdd_arr)
+
+        # P: TQQQ 저점 버킷 카운트 (완료/진행 중 모두 반영)
+        b = _bottom_bucket(bottom_mdd, levels)
+        bottom_counts[b] += 1
+
+        # E: QQQ ATH 회복일의 TQQQ 가격 → 완료 에피소드만
+        if ep['completed']:
+            # QQQ 회복일 당일 또는 그 다음 거래일 TQQQ 가격
+            tqqq_after = tqqq[tqqq.index >= ed]
+            tqqq_recovery_price = float(tqqq_after.iloc[0]) if len(tqqq_after) > 0 else ep_prices[-1]
+
+            for i, lvl in enumerate(levels):
+                for j, mdd in enumerate(ep_mdd_arr):
+                    if mdd <= lvl:
+                        ret = (tqqq_recovery_price / ep_prices[j] - 1) * 100
+                        returns_by_level[i].append(ret)
+                        break
+
+        ep_details.append({
+            'start':           str(sd.date()),
+            'end':             str(ed.date()),
+            'tqqq_bottom_mdd': round(bottom_mdd, 1),
+            'completed':       ep['completed'],
+        })
+
+    total  = len(ep_details)
+    p_dist = [c / total for c in bottom_counts]
     e_return = [sum(r) / len(r) if r else 0.0 for r in returns_by_level]
 
-
     # ── P × E → 정규화 ──
-    raw_score = [p * e for p, e in zip(p_dist, e_return)]
+    raw_score   = [p * e for p, e in zip(p_dist, e_return)]
     total_score = sum(raw_score)
-    if total_score > 0:
-        normed = [r / total_score for r in raw_score]
-    else:
-        normed = [1 / n] * n
+    normed      = [r / total_score for r in raw_score] if total_score > 0 else [1 / n] * n
 
-    # 1% 플로어 적용 후 재정규화
-    FLOOR = 0.01
-    floored = [max(r, FLOOR) for r in normed]
-    total_floored = sum(floored)
-    base_ratios = [r / total_floored for r in floored]
+    FLOOR        = 0.01
+    floored      = [max(r, FLOOR) for r in normed]
+    base_ratios  = [r / sum(floored) for r in floored]
 
     return {
-        'levels': levels,
-        'n_episodes': total,
+        'levels':        levels,
+        'n_episodes':    total,
+        'episodes':      ep_details,
         'bottom_counts': bottom_counts,
-        'p_dist': p_dist,
-        'e_return': e_return,
-        'raw_score': raw_score,
-        'base_ratios': base_ratios,
-        'n_returns': [len(r) for r in returns_by_level],
+        'p_dist':        p_dist,
+        'e_return':      e_return,
+        'raw_score':     raw_score,
+        'base_ratios':   base_ratios,
+        'n_returns':     [len(r) for r in returns_by_level],
     }
 
 
