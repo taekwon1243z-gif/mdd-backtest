@@ -26,10 +26,12 @@ plt.rcParams['axes.unicode_minus'] = False
 
 st.set_page_config(page_title='MDD 방어법 백테스터', page_icon='📈', layout='wide')
 
+# STRATEGIES: TQQQ 1999~현재 데이터 기반 P(바닥분포) × E(기대수익) 최적화 비율
+# 중반 집중형 = 데이터 기반 기본값, 초반/후반 = 가중치 이동 변형
 STRATEGIES = {
-    '초반 집중형': [(-5,0.05),(-10,0.18),(-15,0.18),(-20,0.14),(-25,0.12),(-30,0.08),(-35,0.07),(-40,0.06),(-45,0.06),(-50,0.06)],
-    '중반 집중형': [(-5,0.02),(-10,0.03),(-15,0.12),(-20,0.20),(-25,0.18),(-30,0.15),(-35,0.13),(-40,0.07),(-45,0.06),(-50,0.04)],
-    '후반 집중형': [(-5,0.01),(-10,0.01),(-15,0.01),(-20,0.02),(-25,0.08),(-30,0.16),(-35,0.20),(-40,0.22),(-45,0.15),(-50,0.14)]
+    '초반 집중형': [(-5,0.2524),(-10,0.0515),(-15,0.1088),(-20,0.1403),(-25,0.0738),(-30,0.2627),(-35,0.0071),(-40,0.0951),(-45,0.0047),(-50,0.0035)],
+    '중반 집중형': [(-5,0.1731),(-10,0.0385),(-15,0.0896),(-20,0.1283),(-25,0.076), (-30,0.3088),(-35,0.0097),(-40,0.1566),(-45,0.0097),(-50,0.0097)],
+    '후반 집중형': [(-5,0.0767),(-10,0.0228),(-15,0.0661),(-20,0.1137),(-25,0.0785),(-30,0.3649),(-35,0.0129),(-40,0.2313),(-45,0.0158),(-50,0.0172)],
 }
 
 from backtest_engine import get_fx, make_vault_table, run_backtest
@@ -880,7 +882,31 @@ if st.session_state.selected_strategy and st.session_state.step >= 3:
 # ── 전략 설계 근거 탭 ──
 with tab_basis:
     st.markdown('## 📐 전략 설계 근거')
-    st.caption('이 전략의 비율과 구조는 직관이 아니라 QQQ 역사 데이터에서 도출됐습니다.')
+    st.caption('이 전략의 비율과 구조는 직관이 아니라 TQQQ 역사 데이터(P×E 최적화)에서 도출됐습니다.')
+
+    from backtest_engine import compute_optimal_ratios, make_strategy_variants
+
+    @st.cache_data(show_spinner=False)
+    def load_tqqq_for_basis():
+        """TQQQ 합성(1999~)+실제 시리즈 로드 (비율 최적화용)."""
+        import time, pandas as pd
+        for _ in range(3):
+            try:
+                real = yf.download('TQQQ', start=TQQQ_IPO, progress=False, auto_adjust=False)
+                tqqq_real = real['Close'].dropna().squeeze()
+                qqq_raw = yf.download('QQQ', start='1999-03-10', end=TQQQ_IPO,
+                                      progress=False, auto_adjust=False)
+                qqq_c = qqq_raw['Close'].dropna().squeeze()
+                qqq_ret = qqq_c.pct_change().fillna(0)
+                first_price = float(tqqq_real.iloc[0])
+                synth = [first_price]
+                for r in reversed((qqq_ret * 3 - DAILY_EXPENSE).values[1:]):
+                    synth.insert(0, synth[0] / (1 + r) if (1 + r) != 0 else synth[0])
+                tqqq_synth = pd.Series(synth, index=qqq_c.index)
+                return pd.concat([tqqq_synth, tqqq_real])
+            except:
+                time.sleep(2)
+        return None
 
     @st.cache_data(show_spinner=False)
     def load_qqq_for_basis():
@@ -968,47 +994,121 @@ with tab_basis:
         summary_df = pd.DataFrame(summary_rows)
         st.dataframe(summary_df, use_container_width=True, hide_index=True)
 
-        # ── 2. 전략 설계 매핑 ──
-        st.subheader('② 데이터로 본 전략 설계 근거')
+        # ── 2. P×E 최적 비율 도출 ──
+        st.subheader('② TQQQ 데이터 기반 P×E 최적 비율 도출')
+        st.caption('TQQQ 1999~현재 데이터(합성 포함) 18개 에피소드 분석 결과. 중반 집중형 = 데이터 기반 기본값, 초반/후반 = 가중치 이동 변형.')
 
+        with st.spinner('TQQQ 최적 비율 계산 중...'):
+            tqqq_basis = load_tqqq_for_basis()
+            opt = compute_optimal_ratios(tqqq_basis) if tqqq_basis is not None else None
+
+        if opt is not None:
+            import plotly.graph_objects as go_
+
+            lvl_labels = [f'{l}%' for l in opt['levels']]
+
+            # ── P·E·비율 테이블 ──
+            opt_df = pd.DataFrame({
+                '레벨': lvl_labels,
+                '저점 횟수': opt['bottom_counts'],
+                'P(바닥 분포)': [f'{v:.1%}' for v in opt['p_dist']],
+                'E(기대수익률)': [f'{v:.1f}%' for v in opt['e_return']],
+                'P×E 점수': [f'{v:.4f}' for v in opt['raw_score']],
+                '최적 비율 (중반)': [f'{v:.1%}' for v in opt['base_ratios']],
+            })
+            st.dataframe(opt_df, use_container_width=True, hide_index=True)
+
+            # ── P·E·P×E 비교 차트 ──
+            fig_pe = go_.Figure()
+            fig_pe.add_trace(go_.Bar(name='P: 바닥 분포', x=lvl_labels,
+                                     y=[v * 100 for v in opt['p_dist']],
+                                     marker_color='#3498db', opacity=0.8))
+            fig_pe.add_trace(go_.Bar(name='최적 비율', x=lvl_labels,
+                                     y=[v * 100 for v in opt['base_ratios']],
+                                     marker_color='#2ecc71', opacity=0.9))
+            fig_pe.update_layout(
+                barmode='group', height=320,
+                paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)',
+                margin=dict(l=40, r=20, t=20, b=40),
+                legend=dict(orientation='h', y=1.1),
+                yaxis=dict(ticksuffix='%', gridcolor='rgba(128,128,128,0.2)'),
+                xaxis=dict(gridcolor='rgba(128,128,128,0.2)'),
+            )
+            st.plotly_chart(fig_pe, use_container_width=True)
+
+            # ── 3전략 비율 비교 ──
+            variants = make_strategy_variants(opt['base_ratios'])
+            fig_v = go_.Figure()
+            colors = {'초반 집중형': '#e74c3c', '중반 집중형': '#2ecc71', '후반 집중형': '#9b59b6'}
+            for name, table in variants.items():
+                fig_v.add_trace(go_.Scatter(
+                    x=[f'{l}%' for l, _ in table],
+                    y=[r * 100 for _, r in table],
+                    mode='lines+markers', name=name,
+                    line=dict(color=colors[name], width=2),
+                    marker=dict(size=6),
+                ))
+            fig_v.update_layout(
+                height=300, title='3가지 전략 비율 분포',
+                paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)',
+                margin=dict(l=40, r=20, t=40, b=40),
+                legend=dict(orientation='h', y=1.1),
+                yaxis=dict(ticksuffix='%', gridcolor='rgba(128,128,128,0.2)'),
+                xaxis=dict(gridcolor='rgba(128,128,128,0.2)'),
+            )
+            st.plotly_chart(fig_v, use_container_width=True)
+
+            with st.expander('📌 알고리즘 설명'):
+                st.markdown('''
+**비율 도출 알고리즘 (P×E 프레임워크)**
+
+1. **에피소드 추출** — TQQQ가 ATH 대비 -5% 이하로 진입 후 신고가 회복까지를 1 에피소드로 정의
+   → 1999~현재: **18개 에피소드** 식별
+
+2. **P(바닥 분포)** — 에피소드별 최저점(저점 MDD)이 어느 -5% 버킷에 속하는지 계산
+   → `P[level] = 해당 버킷에서 바닥을 친 에피소드 수 / 전체 에피소드`
+
+3. **E(기대수익률)** — 해당 레벨 첫 진입 시점 → ATH 회복까지의 수익률 평균
+   → 완료된 에피소드만 사용 (진행 중 에피소드 제외)
+
+4. **최적 비율** — `raw = P × E` 후 정규화, 데이터 미비 레벨은 1% 최소 배분 보장
+
+5. **3가지 변형** — 중반 집중형(기본값)에 가중치 이동을 적용해 초반/후반 생성
+
+⚠️ 통계적 한계: TQQQ 실제 역사가 15년에 불과, 합성 포함 시 25년. -35%/45%/50% 구간은 에피소드 수가 극히 적어 P×E 신뢰도가 낮습니다.
+''')
+        else:
+            st.warning('TQQQ 데이터 로딩 실패. 최적 비율 계산을 건너뜁니다.')
+
+        st.divider()
+        st.subheader('전략별 특성')
         ep10 = all_episodes[-10]
         ep20 = all_episodes[-20]
         ep30 = all_episodes[-30]
-        ep40 = all_episodes[-40]
-
         col1, col2, col3 = st.columns(3)
         with col1:
             st.markdown('### 초반 집중형')
             st.markdown(f'''
 **타깃**: MDD -5% ~ -20% 구간
-**빈도**: -10% 이하 **{len(ep10)}회** 발생 ({round(len(ep10)/((qqq_hist.index[-1]-qqq_hist.index[0]).days/365),1)}회/년)
+**QQQ 기준 빈도**: -10% 이하 **{len(ep10)}회** ({round(len(ep10)/((qqq_hist.index[-1]-qqq_hist.index[0]).days/365),1)}회/년)
 
-거의 **매년 발생**하는 일반적 조정 구간.
-상대적으로 얕고 회복이 빠르기 때문에 초반에 실탄을 집중해
-**평균 단가를 빠르게 낮추는 전략**.
-V자 반등 시 가장 큰 수익을 냅니다.
+매년 발생하는 일반적 조정에서 실탄을 빠르게 소진, V자 반등 극대화. P×E 기반 비율로 자동 산출.
 ''')
         with col2:
             st.markdown('### 중반 집중형')
             st.markdown(f'''
 **타깃**: MDD -20% ~ -40% 구간
-**빈도**: -20% 이하 **{len(ep20)}회** 발생 ({round(len(ep20)/((qqq_hist.index[-1]-qqq_hist.index[0]).days/365),1)}회/년)
+**QQQ 기준 빈도**: -20% 이하 **{len(ep20)}회** ({round(len(ep20)/((qqq_hist.index[-1]-qqq_hist.index[0]).days/365),1)}회/년)
 
-**수년에 한 번** 발생하는 본격 하락장.
-2018년 Q4(-23%), 2020년 코로나(-30%), 2022년 금리 충격(-35%)이 해당.
-회복까지 6개월 ~ 2년이 걸리므로
-**중간 구간에 실탄을 고르게 배분**하는 전략.
+P×E 알고리즘의 **데이터 기반 기본값**. 수년에 한 번 오는 본격 하락장을 정면으로 공략.
 ''')
         with col3:
             st.markdown('### 후반 집중형')
             st.markdown(f'''
-**타깃**: MDD -35% ~ -50% 구간
-**빈도**: -30% 이하 **{len(ep30)}회** 발생 ({round(len(ep30)/((qqq_hist.index[-1]-qqq_hist.index[0]).days/365),1)}회/년)
+**타깃**: MDD -30% ~ -50% 구간
+**QQQ 기준 빈도**: -30% 이하 **{len(ep30)}회** ({round(len(ep30)/((qqq_hist.index[-1]-qqq_hist.index[0]).days/365),1)}회/년)
 
-2000년 닷컴버블(-83%), 2008년 금융위기(-54%).
-**10년에 한 번** 수준의 구조적 베어마켓.
-회복까지 수년이 걸리지만 저점에서 최대 매집 시
-복리 회복 효과가 극대화됩니다.
+구조적 베어마켓 대비. -30% 이후 구간에 최대 집중, 회복 시 복리 효과 극대화.
 ''')
 
         # ── 3. 에피소드 상세 ──
