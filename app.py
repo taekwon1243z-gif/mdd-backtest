@@ -26,12 +26,12 @@ plt.rcParams['axes.unicode_minus'] = False
 
 st.set_page_config(page_title='MDD 방어법 백테스터', page_icon='📈', layout='wide')
 
-# STRATEGIES: TQQQ 1999~현재 데이터 기반 P(바닥분포) × E(기대수익) 최적화 비율
+# STRATEGIES: QQQ 에피소드(29개) + TQQQ 수익 기반 P×E 최적화 비율
 # 중반 집중형 = 데이터 기반 기본값, 초반/후반 = 가중치 이동 변형
 STRATEGIES = {
-    '초반 집중형': [(-5,0.2524),(-10,0.0515),(-15,0.1088),(-20,0.1403),(-25,0.0738),(-30,0.2627),(-35,0.0071),(-40,0.0951),(-45,0.0047),(-50,0.0035)],
-    '중반 집중형': [(-5,0.1731),(-10,0.0385),(-15,0.0896),(-20,0.1283),(-25,0.076), (-30,0.3088),(-35,0.0097),(-40,0.1566),(-45,0.0097),(-50,0.0097)],
-    '후반 집중형': [(-5,0.0767),(-10,0.0228),(-15,0.0661),(-20,0.1137),(-25,0.0785),(-30,0.3649),(-35,0.0129),(-40,0.2313),(-45,0.0158),(-50,0.0172)],
+    '초반 집중형': [(-5,0.1911),(-10,0.326), (-15,0.0964),(-20,0.1304),(-25,0.0827),(-30,0.2668),(-35,0.0072),(-40,0.0397),(-45,0.0047),(-50,0.0035)],
+    '중반 집중형': [(-5,0.1296),(-10,0.2413),(-15,0.0785),(-20,0.118), (-25,0.0841),(-30,0.0424),(-35,0.0098),(-40,0.0098),(-45,0.1463),(-50,0.1403)],
+    '후반 집중형': [(-5,0.0567),(-10,0.1407),(-15,0.0572),(-20,0.1032),(-25,0.0859),(-30,0.0494),(-35,0.0129),(-40,0.0143),(-45,0.2345),(-50,0.2454)],
 }
 
 from backtest_engine import get_fx, make_vault_table, run_backtest
@@ -995,12 +995,12 @@ with tab_basis:
         st.dataframe(summary_df, use_container_width=True, hide_index=True)
 
         # ── 2. P×E 최적 비율 도출 ──
-        st.subheader('② TQQQ 데이터 기반 P×E 최적 비율 도출')
-        st.caption('TQQQ 1999~현재 데이터(합성 포함) 18개 에피소드 분석 결과. 중반 집중형 = 데이터 기반 기본값, 초반/후반 = 가중치 이동 변형.')
+        st.subheader('② QQQ 에피소드 + TQQQ 수익 기반 P×E 최적 비율 도출')
+        st.caption('QQQ 1999~현재 29개 에피소드 분석. P=TQQQ 바닥 분포, E=TQQQ 기대수익률, 중반 집중형 = 데이터 기반 기본값.')
 
-        with st.spinner('TQQQ 최적 비율 계산 중...'):
+        with st.spinner('P×E 최적 비율 계산 중...'):
             tqqq_basis = load_tqqq_for_basis()
-            opt = compute_optimal_ratios(tqqq_basis) if tqqq_basis is not None else None
+            opt = compute_optimal_ratios(qqq_hist, tqqq_basis) if (qqq_hist is not None and tqqq_basis is not None) else None
 
         if opt is not None:
             import plotly.graph_objects as go_
