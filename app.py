@@ -359,73 +359,32 @@ with st.expander('① 기본 설정', expanded=st.session_state.step == 1):
     _wts       = [r / _total * 100 for r in _raws]
     _cash_pool = seed_krw * 0.3
     _amounts   = [_cash_pool * w / 100 for w in _wts]
-    _cum_pcts  = []
-    _c = 0.0
-    for w in _wts:
-        _c += w
-        _cum_pcts.append(_c)
 
-    col_wt, col_amt = st.columns(2)
-    with col_wt:
-        _fw = _go.Figure(_go.Bar(
-            x=_wts,
-            y=[f'-{d}%' for d in _depths],
-            orientation='h',
-            marker_color=K_COLOR,
-            text=[f'{w:.1f}%' for w in _wts],
-            textposition='outside',
-        ))
-        _fw.update_layout(
-            height=280, margin=dict(l=50, r=70, t=35, b=20),
-            title_text='레벨별 투입 비중',
-            plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)',
-            xaxis=dict(range=[0, max(_wts) * 1.4], ticksuffix='%'),
-            yaxis=dict(autorange='reversed'),
-            font=dict(color='white'),
-        )
-        st.plotly_chart(_fw, use_container_width=True)
+    # 막대 안: 비중(%) + 금액(만원) 동시 표시
+    def _fmt_amt(a):
+        return f'{a/10000:.0f}만원' if a >= 10000 else f'{a:.0f}원'
 
-    with col_amt:
-        # 누적 투입 막대차트 — 각 레벨 도달 시 현금풀 얼마나 썼는지
-        _bar_colors = [K_COLOR] * len(_depths)
-        for _mi, _cp in enumerate(_cum_pcts):
-            if _cp >= 90:
-                _bar_colors[_mi] = '#e74c3c'
-            elif _cp >= 60:
-                _bar_colors[_mi] = '#f39c12'
+    _bar_texts = [f'{w:.1f}%  ({_fmt_amt(a)})' for w, a in zip(_wts, _amounts)]
 
-        _fa = _go.Figure(_go.Bar(
-            x=[f'-{d}%' for d in _depths],
-            y=_cum_pcts,
-            marker_color=_bar_colors,
-            text=[f'{cp:.0f}%' for cp in _cum_pcts],
-            textposition='outside',
-        ))
-        _fa.add_hline(y=100, line_color='rgba(255,255,255,0.3)', line_dash='dash', line_width=1)
-        _fa.update_layout(
-            height=280, margin=dict(l=50, r=20, t=35, b=20),
-            title_text=f'레벨 도달 시 현금풀 소진율 (총 {_cash_pool/10000:.0f}만원)',
-            plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)',
-            yaxis=dict(range=[0, 115], ticksuffix='%', color='white'),
-            xaxis=dict(color='white'),
-            font=dict(color='white'),
-            showlegend=False,
-        )
-        st.plotly_chart(_fa, use_container_width=True)
-
-    # 핵심 구간 요약
-    _mile = {20: None, 35: None, 50: None}
-    _c2 = 0.0
-    for _i, (_d, _w) in enumerate(zip(_depths, _wts)):
-        _c2 += _w
-        if _d in _mile:
-            _mile[_d] = (_c2, _amounts[_i])
-    st.caption(
-        f'현금풀 {_cash_pool/10000:.0f}만원 기준 — '
-        f'-20% 도달 시 **{_mile[20][0]:.0f}%** 소진 ({_cash_pool*_mile[20][0]/100/10000:.0f}만원) · '
-        f'-35% 도달 시 **{_mile[35][0]:.0f}%** 소진 · '
-        f'-50% 도달 시 **{_mile[50][0]:.0f}%** 소진 (전액)'
+    _fw = _go.Figure(_go.Bar(
+        x=_wts,
+        y=[f'-{d}%' for d in _depths],
+        orientation='h',
+        marker_color=K_COLOR,
+        text=_bar_texts,
+        textposition='outside',
+        hovertemplate='레벨 %{y}<br>비중: %{x:.1f}%<br>투입 금액: %{customdata}<extra></extra>',
+        customdata=[_fmt_amt(a) for a in _amounts],
+    ))
+    _fw.update_layout(
+        height=320, margin=dict(l=55, r=160, t=35, b=20),
+        title_text=f'레벨별 투입 비중 · 금액 (현금풀 {_cash_pool/10000:.0f}만원 기준)',
+        plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)',
+        xaxis=dict(range=[0, max(_wts) * 1.7], ticksuffix='%', showticklabels=False),
+        yaxis=dict(autorange='reversed'),
+        font=dict(color='white'),
     )
+    st.plotly_chart(_fw, use_container_width=True)
 
     st.info('💡 교차검증(130개 시작점, 3개 OOS 구간): 어떤 설정이든 장기 CAGR 차이는 **±1.5%p 이내**. 확신이 없으면 균등 분배(0.0)가 가장 무난합니다.')
 
