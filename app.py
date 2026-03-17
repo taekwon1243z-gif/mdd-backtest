@@ -27,15 +27,6 @@ plt.rcParams['axes.unicode_minus'] = False
 st.set_page_config(page_title='MDD 방어법 백테스터', page_icon='📈', layout='wide')
 
 # k-파라미터 기반 비중 계산: w[i] ∝ depth[i]^k  (depth=[5,10,...,50])
-K_OPTIONS = ['초반 집중', '초반 선호', '균등 분배', '후반 선호', '후반 집중']
-K_VALUES_MAP = {'초반 집중': -2.0, '초반 선호': -1.0, '균등 분배': 0.0, '후반 선호': 1.0, '후반 집중': 2.0}
-K_DESC = {
-    '초반 집중': '하락 초기(-5~15%)에 현금풀을 빠르게 집중 투입. V자 반등 시 유리.',
-    '초반 선호': '앞 구간에 비중을 두되 중후반도 여력 확보.',
-    '균등 분배': '모든 레벨에 동일 비중. 시나리오 중립적.',
-    '후반 선호': '중후반 구간에 탄약을 아껴두는 방식.',
-    '후반 집중': '깊은 폭락(-35~50%)에 집중 매수. 닷컴급 하락 대비.',
-}
 K_COLOR = '#378ADD'
 K_FILL  = 'rgba(55,138,221,0.15)'
 
@@ -44,6 +35,20 @@ def k_to_table(k):
     raws   = [1.0] * len(depths) if k == 0 else [d ** k for d in depths]
     total  = sum(raws)
     return [(-d, r / total) for d, r in zip(depths, raws)]
+
+def k_label(k):
+    if k <= -1.5:   return '초반 집중'
+    elif k <= -0.5: return '초반 선호'
+    elif k <   0.5: return '균등 분배'
+    elif k <   1.5: return '후반 선호'
+    else:           return '후반 집중'
+
+def k_desc(k):
+    if k <= -1.5:   return '하락 초기(-5~15%)에 현금풀을 빠르게 집중 투입. V자 반등 시 유리.'
+    elif k <= -0.5: return '앞 구간에 비중을 두되 중후반도 여력 확보.'
+    elif k <   0.5: return '모든 레벨에 동일 비중. 시나리오 중립적.'
+    elif k <   1.5: return '중후반 구간에 탄약을 아껴두는 방식.'
+    else:           return '깊은 폭락(-35~50%)에 집중 매수. 닷컴급 하락 대비.'
 
 from backtest_engine import get_fx, make_vault_table, run_backtest
 
@@ -337,22 +342,28 @@ with st.expander('① 기본 설정', expanded=st.session_state.step == 1):
 
     st.divider()
     st.markdown('**📐 매수 집중 시점 설정**')
-    k_choice = st.select_slider(
-        '하락 어느 구간에 집중 매수할까요?',
-        options=K_OPTIONS,
-        value='균등 분배',
+
+    import plotly.graph_objects as _go
+
+    _k_val = st.slider(
+        '← 초반 집중  |  하락 어느 구간에 집중 매수할까요?  |  후반 집중 →',
+        min_value=-2.0, max_value=2.0, value=0.0, step=0.1,
         help='교차검증 결과: 어떤 설정이든 장기 CAGR 차이는 ±1.5%p 이내입니다.'
     )
-    st.caption(K_DESC[k_choice])
+    st.caption(f'**{k_label(_k_val)}** (k={_k_val:+.1f}) — {k_desc(_k_val)}')
 
     # ── 비중 시각화 (실시간) ──
-    import plotly.graph_objects as _go
-    _k_val  = K_VALUES_MAP[k_choice]
-    _depths = list(range(5, 55, 5))
-    _raws   = [1.0] * len(_depths) if _k_val == 0 else [d ** _k_val for d in _depths]
-    _total  = sum(_raws)
-    _wts    = [r / _total * 100 for r in _raws]
+    _depths    = list(range(5, 55, 5))
+    _raws      = [1.0] * len(_depths) if _k_val == 0 else [d ** _k_val for d in _depths]
+    _total     = sum(_raws)
+    _wts       = [r / _total * 100 for r in _raws]
     _cash_pool = seed_krw * 0.3
+    _amounts   = [_cash_pool * w / 100 for w in _wts]
+    _cum_pcts  = []
+    _c = 0.0
+    for w in _wts:
+        _c += w
+        _cum_pcts.append(_c)
 
     col_wt, col_amt = st.columns(2)
     with col_wt:
@@ -365,49 +376,58 @@ with st.expander('① 기본 설정', expanded=st.session_state.step == 1):
             textposition='outside',
         ))
         _fw.update_layout(
-            height=260, margin=dict(l=50, r=60, t=30, b=20),
+            height=280, margin=dict(l=50, r=70, t=35, b=20),
             title_text='레벨별 투입 비중',
             plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)',
-            xaxis=dict(range=[0, max(_wts) * 1.35], ticksuffix='%'),
+            xaxis=dict(range=[0, max(_wts) * 1.4], ticksuffix='%'),
             yaxis=dict(autorange='reversed'),
             font=dict(color='white'),
         )
         st.plotly_chart(_fw, use_container_width=True)
 
     with col_amt:
-        _amounts = [_cash_pool * w / 100 for w in _wts]
-        _cum = []
-        _c = 0
-        for a in _amounts:
-            _c += a
-            _cum.append(_c)
-        _fa = _go.Figure()
-        _fa.add_bar(
+        # 누적 투입 막대차트 — 각 레벨 도달 시 현금풀 얼마나 썼는지
+        _bar_colors = [K_COLOR] * len(_depths)
+        for _mi, _cp in enumerate(_cum_pcts):
+            if _cp >= 90:
+                _bar_colors[_mi] = '#e74c3c'
+            elif _cp >= 60:
+                _bar_colors[_mi] = '#f39c12'
+
+        _fa = _go.Figure(_go.Bar(
             x=[f'-{d}%' for d in _depths],
-            y=[a / 10000 for a in _amounts],
-            name='회차 투입',
-            marker_color=K_COLOR,
-        )
-        _fa.add_scatter(
-            x=[f'-{d}%' for d in _depths],
-            y=[c / 10000 for c in _cum],
-            name='누적 투입',
-            mode='lines+markers',
-            line=dict(color='#e74c3c', width=2),
-            yaxis='y2',
-        )
+            y=_cum_pcts,
+            marker_color=_bar_colors,
+            text=[f'{cp:.0f}%' for cp in _cum_pcts],
+            textposition='outside',
+        ))
+        _fa.add_hline(y=100, line_color='rgba(255,255,255,0.3)', line_dash='dash', line_width=1)
         _fa.update_layout(
-            height=260, margin=dict(l=50, r=60, t=30, b=20),
-            title_text=f'투입 금액 (현금풀 {_cash_pool/10000:.0f}만원)',
+            height=280, margin=dict(l=50, r=20, t=35, b=20),
+            title_text=f'레벨 도달 시 현금풀 소진율 (총 {_cash_pool/10000:.0f}만원)',
             plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)',
-            yaxis=dict(title='만원', color='white'),
-            yaxis2=dict(title='누적(만원)', overlaying='y', side='right', color='#e74c3c'),
-            legend=dict(orientation='h', y=-0.15),
+            yaxis=dict(range=[0, 115], ticksuffix='%', color='white'),
+            xaxis=dict(color='white'),
             font=dict(color='white'),
+            showlegend=False,
         )
         st.plotly_chart(_fa, use_container_width=True)
 
-    st.info('💡 교차검증(130개 시작점, 3개 OOS 구간): 어떤 설정이든 장기 CAGR 차이는 **±1.5%p 이내**. 시장 전망에 따라 골라도 되고 균등 분배가 가장 무난합니다.')
+    # 핵심 구간 요약
+    _mile = {20: None, 35: None, 50: None}
+    _c2 = 0.0
+    for _i, (_d, _w) in enumerate(zip(_depths, _wts)):
+        _c2 += _w
+        if _d in _mile:
+            _mile[_d] = (_c2, _amounts[_i])
+    st.caption(
+        f'현금풀 {_cash_pool/10000:.0f}만원 기준 — '
+        f'-20% 도달 시 **{_mile[20][0]:.0f}%** 소진 ({_cash_pool*_mile[20][0]/100/10000:.0f}만원) · '
+        f'-35% 도달 시 **{_mile[35][0]:.0f}%** 소진 · '
+        f'-50% 도달 시 **{_mile[50][0]:.0f}%** 소진 (전액)'
+    )
+
+    st.info('💡 교차검증(130개 시작점, 3개 OOS 구간): 어떤 설정이든 장기 CAGR 차이는 **±1.5%p 이내**. 확신이 없으면 균등 분배(0.0)가 가장 무난합니다.')
 
     if st.button("📊 백테스트 실행", type="primary"):
         with st.spinner('데이터 로딩 중... (최초 1회는 30초 정도 걸려요)'):
@@ -416,16 +436,17 @@ with st.expander('① 기본 설정', expanded=st.session_state.step == 1):
                 fx_dict = {str(d.date()): float(v) for d, v in zip(fx_series.index, fx_series.values)}
                 fx_sorted = sorted(fx_dict.keys())
                 start_fx = get_fx(fx_dict, fx_sorted, str(tqqq.index[0].date()))
-                buy_table = k_to_table(K_VALUES_MAP[k_choice])
+                _strat_key = f'{k_label(_k_val)} (k={_k_val:+.1f})'
+                buy_table = k_to_table(_k_val)
                 h, s = run_backtest(buy_table, tqqq, fx_dict, fx_sorted, seed_krw, use_vault, vault_krw if use_vault else 0, vault_trigger,
                                     use_next_open=use_next_open, tqqq_open=tqqq_open,
                                     use_dca=use_dca, dca_amount_krw=dca_amount_krw, dca_day=dca_day,
                                     rebalance_band=rebalance_band,
                                     commission_rate=commission_rate, apply_tax=apply_tax)
-                results = {k_choice: h}; all_stats = {k_choice: s}
+                results = {_strat_key: h}; all_stats = {_strat_key: s}
                 st.session_state.results = results
                 st.session_state.all_stats = all_stats
-                st.session_state.k_choice = k_choice
+                st.session_state.k_choice = _strat_key
                 st.session_state.buy_table = buy_table
                 st.session_state.seed_krw = seed_krw
                 st.session_state.start_fx = start_fx
