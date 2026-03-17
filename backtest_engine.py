@@ -285,7 +285,8 @@ def run_backtest(buy_table, tqqq, fx_dict, fx_sorted, seed_krw, use_vault, vault
              'total_tx': buy_count + vault_buy_count + rebalance_count,
              'buy_log': buy_log, 'rebalance_log': rebalance_log,
              'total_commission_krw': total_commission_krw,
-             'total_tax_krw': total_tax_krw}
+             'total_tax_krw': total_tax_krw,
+             'initial_cash_pool_krw': total_cash_pool_krw}
     return history, stats
 
 
