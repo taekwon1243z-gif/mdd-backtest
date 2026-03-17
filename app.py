@@ -435,27 +435,41 @@ if st.session_state.results and st.session_state.step >= 2:
         from plotly.subplots import make_subplots
 
         colors_map = {'초반 집중형': '#e74c3c', '균등형': '#f39c12', '후반 집중형': '#2ecc71'}
+        fill_colors_map = {'초반 집중형': 'rgba(231,76,60,0.15)', '균등형': 'rgba(243,156,18,0.15)', '후반 집중형': 'rgba(46,204,113,0.15)'}
 
         fig = make_subplots(
-            rows=3, cols=1,
+            rows=4, cols=1,
             shared_xaxes=True,
-            row_heights=[0.6, 0.2, 0.2],
+            row_heights=[0.44, 0.14, 0.14, 0.28],
             vertical_spacing=0.03
         )
 
         # ── 전략별 수익률 ──
+        def fmt_krw(x):
+            if x >= 1e8: return f'{x/1e8:.1f}억원'
+            elif x >= 1e4: return f'{x/1e4:.0f}만원'
+            return f'{x:.0f}원'
+
         for strat_name, history in results.items():
             totals = [h['total_krw'] for h in history]
             rate = (totals[-1] / totals[0] - 1) * 100
 
-            def fmt_krw(x):
-                if x >= 1e8: return f'{x/1e8:.1f}억원'
-                elif x >= 1e4: return f'{x/1e4:.0f}만원'
-                return f'{x:.0f}원'
+            # ATH 대비 낙폭 및 ATH 이후 경과일 계산
+            _rpk = totals[0]; _rpk_date = history[0]['date']
+            ath_pcts = []; ath_days = []
+            for _tv, _th in zip(totals, history):
+                if _tv >= _rpk:
+                    _rpk = _tv; _rpk_date = _th['date']
+                ath_pcts.append((_tv / _rpk - 1) * 100)
+                ath_days.append((pd.Timestamp(_th['date']) - pd.Timestamp(_rpk_date)).days)
 
             hover_texts = [
-                f"<b>{strat_name}</b><br>날짜: {h['date']}<br>자산: {fmt_krw(h['total_krw'])}<br>TQQQ: ${h['price']:.2f}<br>MDD: {h['mdd']:.1f}%"
-                for h in history
+                f"<b>{strat_name}</b><br>"
+                f"날짜: {h['date']}<br>"
+                f"자산: {fmt_krw(h['total_krw'])}<br>"
+                f"ATH 대비: {ath_pcts[i]:+.1f}% | ATH 이후: {ath_days[i]}일<br>"
+                f"TQQQ: ${h['price']:.2f} | TQQQ MDD: {h['mdd']:.1f}%"
+                for i, h in enumerate(history)
             ]
             fig.add_trace(go.Scatter(
                 x=[h['date'] for h in history],
@@ -465,6 +479,25 @@ if st.session_state.results and st.session_state.step >= 2:
                 hovertemplate="%{customdata}<extra></extra>",
                 customdata=hover_texts
             ), row=1, col=1)
+
+            # 낙폭 차트 (row 4)
+            fig.add_trace(go.Scatter(
+                x=[h['date'] for h in history],
+                y=ath_pcts,
+                name=f"{strat_name} 낙폭",
+                line=dict(color=colors_map[strat_name], width=1.5),
+                fill='tozeroy',
+                fillcolor=fill_colors_map[strat_name],
+                hovertemplate=(
+                    f"<b>{strat_name}</b><br>"
+                    "날짜: %{x}<br>"
+                    "ATH 대비: %{y:.1f}%<br>"
+                    "ATH 이후: %{customdata}일"
+                    "<extra></extra>"
+                ),
+                customdata=ath_days,
+                showlegend=False,
+            ), row=4, col=1)
 
         # TQQQ 홀딩
         hold = [h['hold_krw'] for h in first]
@@ -547,7 +580,7 @@ if st.session_state.results and st.session_state.step >= 2:
 
         # ── 레이아웃 ──
         fig.update_layout(
-            height=650,
+            height=750,
             paper_bgcolor='#1a1a2e',
             plot_bgcolor='#16213e',
             font=dict(color='white', size=11),
@@ -567,6 +600,14 @@ if st.session_state.results and st.session_state.step >= 2:
         )
         fig.update_yaxes(title_text='RSI', tickfont=dict(color='white'), range=[0,100], row=2, col=1)
         fig.update_yaxes(title_text='VIX', tickfont=dict(color='white'), row=3, col=1)
+        fig.update_yaxes(
+            title_text='낙폭 (%)',
+            tickfont=dict(color='white'),
+            gridcolor='rgba(255,255,255,0.1)',
+            tickformat='.0f',
+            range=[-100, 5],
+            row=4, col=1
+        )
         fig.update_xaxes(tickfont=dict(color='white'), gridcolor='rgba(255,255,255,0.1)')
 
         st.plotly_chart(fig, use_container_width=True)
