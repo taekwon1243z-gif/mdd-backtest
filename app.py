@@ -371,7 +371,7 @@ if st.session_state.results and st.session_state.step >= 2:
             final_krw = h[-1]['total_krw']
             initial_krw = h[0]['total_krw']
             rate = (final_krw / initial_krw - 1) * 100
-            years = len(h) / 52
+            years = (pd.Timestamp(h[-1]['date']) - pd.Timestamp(h[0]['date'])).days / 365.25
             with cols[i]:
                 st.metric(name, f'{final_krw:,.0f}원', f'{rate:+.1f}%')
                 cagr = ((final_krw / initial_krw) ** (1/years) - 1) * 100 if years > 0 else 0
@@ -380,7 +380,7 @@ if st.session_state.results and st.session_state.step >= 2:
             h = results[strategy_names[0]]
             hold_krw = h[-1]['hold_krw']
             hold_rate = (hold_krw / h[0]['total_krw'] - 1) * 100
-            years = len(h) / 52
+            years = (pd.Timestamp(h[-1]['date']) - pd.Timestamp(h[0]['date'])).days / 365.25
             st.metric('단순 홀딩', f'{hold_krw:,.0f}원', f'{hold_rate:+.1f}%')
             hold_cagr = ((hold_krw / h[0]['total_krw']) ** (1/years) - 1) * 100 if years > 0 else 0
             st.caption(f'{seed_krw_val/10000:.0f}만원 → {hold_krw/10000:.0f}만원 ({years:.1f}년) | 연평균 {hold_cagr:.1f}%')
@@ -588,7 +588,7 @@ if st.session_state.results and st.session_state.step >= 2:
             worst_mdd = tqqq_mdd
             final_krw = h[-1]['total_krw']
             init_krw = h[0]['total_krw']
-            years = len(h) / 52
+            years = (pd.Timestamp(h[-1]['date']) - pd.Timestamp(h[0]['date'])).days / 365.25
             cagr = ((final_krw / init_krw) ** (1/years) - 1) * 100 if years > 0 else 0
             with st.expander(f'{name} | 최종 {final_krw/10000:.0f}만원 | 연평균 {cagr:.1f}%'):
                 total_tx = s["buy_count"] + s["vault_buy_count"] + s["rebalance_count"]
@@ -748,7 +748,7 @@ if st.session_state.results and st.session_state.step >= 2:
                         orig_pmdd = calc_portfolio_mdd(h)
                         new_pmdd = calc_portfolio_mdd(h2)
 
-                        _years = len(h) / 52
+                        _years = (pd.Timestamp(h[-1]['date']) - pd.Timestamp(h[0]['date'])).days / 365.25
                         orig_cagr = ((orig_final / h[0]['total_krw']) ** (1/_years) - 1) * 100 if _years > 0 else 0
                         new_cagr = ((new_final / h2[0]['total_krw']) ** (1/_years) - 1) * 100 if _years > 0 else 0
 
