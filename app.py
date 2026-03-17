@@ -294,6 +294,21 @@ with st.expander('① 기본 설정', expanded=st.session_state.step == 1):
     rebalance_band = rebalance_band_pct / 100
     st.caption(f'TQQQ 비율이 {70 - rebalance_band_pct}%~{70 + rebalance_band_pct}% 벗어날 때만 리밸런싱')
 
+    st.markdown('**💰 수수료/세금 설정**')
+    col_fee1, col_fee2 = st.columns(2)
+    with col_fee1:
+        commission_pct = st.number_input(
+            '매매 수수료 (%)', min_value=0.0, max_value=0.5, value=0.07, step=0.01, format='%.2f',
+            help='키움/토스: 0.07%, 일반 증권사: 0.25%. 0이면 수수료 미반영.'
+        )
+        commission_rate = commission_pct / 100
+    with col_fee2:
+        apply_tax = st.checkbox(
+            '양도소득세 반영 (22%)',
+            value=False,
+            help='해외주식 양도차익 연 250만원 공제 후 22% 과세. 리밸런싱 매도 시 실현차익에만 적용.'
+        )
+
     use_dca = st.checkbox("📅 적립식 추매 (DCA) - 매월 고정 금액 자동 매수", value=False)
     dca_amount_krw = 0
     dca_day = 1
@@ -323,7 +338,8 @@ with st.expander('① 기본 설정', expanded=st.session_state.step == 1):
                     h, s = run_backtest(table, tqqq, fx_dict, fx_sorted, seed_krw, use_vault, vault_krw if use_vault else 0, vault_trigger,
                                         use_next_open=use_next_open, tqqq_open=tqqq_open,
                                         use_dca=use_dca, dca_amount_krw=dca_amount_krw, dca_day=dca_day,
-                                        rebalance_band=rebalance_band)
+                                        rebalance_band=rebalance_band,
+                                        commission_rate=commission_rate, apply_tax=apply_tax)
                     results[name] = h; all_stats[name] = s
                 st.session_state.results = results
                 st.session_state.all_stats = all_stats
@@ -334,6 +350,8 @@ with st.expander('① 기본 설정', expanded=st.session_state.step == 1):
                 st.session_state.vault_trigger = vault_trigger
                 st.session_state.fx_dict = fx_dict
                 st.session_state.tqqq = tqqq
+                st.session_state.commission_rate = commission_rate
+                st.session_state.apply_tax = apply_tax
                 st.session_state.step = 2
                 st.rerun()
             except Exception as e:
@@ -366,6 +384,25 @@ if st.session_state.results and st.session_state.step >= 2:
             st.metric('단순 홀딩', f'{hold_krw:,.0f}원', f'{hold_rate:+.1f}%')
             hold_cagr = ((hold_krw / h[0]['total_krw']) ** (1/years) - 1) * 100 if years > 0 else 0
             st.caption(f'{seed_krw_val/10000:.0f}만원 → {hold_krw/10000:.0f}만원 ({years:.1f}년) | 연평균 {hold_cagr:.1f}%')
+
+        # 수수료/세금 요약
+        _comm = st.session_state.get('commission_rate', 0)
+        _tax = st.session_state.get('apply_tax', False)
+        if _comm > 0 or _tax:
+            fee_rows = []
+            for name in strategy_names:
+                s = all_stats[name]
+                row = {'전략': name,
+                       '총 수수료': f'{s.get("total_commission_krw", 0):,.0f}원',
+                       '총 납부세금': f'{s.get("total_tax_krw", 0):,.0f}원',
+                       '합계 비용': f'{s.get("total_commission_krw", 0) + s.get("total_tax_krw", 0):,.0f}원'}
+                fee_rows.append(row)
+            st.markdown('**💰 수수료 · 세금 내역**')
+            st.dataframe(pd.DataFrame(fee_rows), use_container_width=True, hide_index=True)
+            if _comm > 0:
+                st.caption(f'수수료율 {_comm*100:.2f}% 적용')
+            if _tax:
+                st.caption('양도소득세: 연간 250만원 공제 후 22% (리밸런싱 매도 실현차익 기준)')
 
         import pandas as pd
         first = results[strategy_names[0]]

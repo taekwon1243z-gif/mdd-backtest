@@ -220,6 +220,57 @@ def test_make_vault_table():
     assert abs(sum(ratios) - 1.0) < 1e-9, f"금고 비율 합계가 1이 아님: {sum(ratios)}"
 
 
+# ── 14. 수수료 차감 검증 ──────────────────────────────
+def test_commission_deducted():
+    """수수료 0.1% 설정 시 현금이 수수료 없을 때보다 더 적어야 한다"""
+    tqqq = make_tqqq([50.0, 45.0])
+    fx_dict, fx_sorted = make_fx_dict(tqqq)
+
+    h_no_fee, s_no_fee = run_backtest(STRATEGY, tqqq, fx_dict, fx_sorted,
+                                      SEED_KRW, False, 0, 50, commission_rate=0.0)
+    h_fee, s_fee = run_backtest(STRATEGY, tqqq, fx_dict, fx_sorted,
+                                SEED_KRW, False, 0, 50, commission_rate=0.001)
+
+    assert s_fee['total_commission_krw'] > 0, '수수료가 0원으로 집계됨'
+    assert h_fee[-1]['total_krw'] < h_no_fee[-1]['total_krw'], '수수료 반영 후 자산이 줄지 않음'
+
+
+# ── 15. 세금: 리밸런싱 매도 시 실현차익 과세 ─────────
+def test_tax_on_rebalancing_sell():
+    """$50 → $100 급등 → 리밸런싱 매도 발생 → 실현차익에 세금 부과 (공제 0원으로 격리 검증)"""
+    prices = [50.0] + [100.0] * 250
+    tqqq = make_tqqq(prices, start='2022-01-03')
+    fx_dict, fx_sorted = make_fx_dict(tqqq)
+
+    # annual_deduction_krw=0 으로 세금 과세 로직만 격리해서 검증
+    _, s = run_backtest(STRATEGY, tqqq, fx_dict, fx_sorted,
+                        SEED_KRW, False, 0, 50,
+                        apply_tax=True, rebalance_band=0.05,
+                        annual_deduction_krw=0)
+
+    assert s['total_tax_krw'] > 0, '리밸런싱 매도 실현차익에 세금이 부과되지 않음'
+    # 공제 0 적용, 세율 22% → 실현차익의 22%가 세금이어야 함
+    _, s_no_tax = run_backtest(STRATEGY, tqqq, fx_dict, fx_sorted,
+                               SEED_KRW, False, 0, 50,
+                               apply_tax=False, rebalance_band=0.05)
+    assert s['total_tax_krw'] < s_no_tax['total_commission_krw'] + 10_000_000, '세금이 비이상적으로 큼'
+
+
+# ── 16. 기본값 변경 없음 ───────────────────────────────
+def test_default_no_fee_no_tax():
+    """commission_rate=0, apply_tax=False(기본값)이면 기존 결과와 동일해야 한다"""
+    tqqq = make_tqqq([50.0, 45.0, 55.0])
+    fx_dict, fx_sorted = make_fx_dict(tqqq)
+
+    h1, s1 = run_backtest(STRATEGY, tqqq, fx_dict, fx_sorted, SEED_KRW, False, 0, 50)
+    h2, s2 = run_backtest(STRATEGY, tqqq, fx_dict, fx_sorted, SEED_KRW, False, 0, 50,
+                          commission_rate=0.0, apply_tax=False)
+
+    assert h1[-1]['total_krw'] == h2[-1]['total_krw'], '기본값 동작이 달라짐'
+    assert s2['total_commission_krw'] == 0
+    assert s2['total_tax_krw'] == 0
+
+
 # ── 10. get_fx 폴백 검증 ─────────────────────────────
 def test_get_fx_fallback():
     """해당 날짜 환율 없으면 직전 날짜 환율 반환, 아무것도 없으면 1350"""

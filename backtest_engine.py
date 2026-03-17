@@ -17,7 +17,8 @@ def make_vault_table(trigger):
 
 def run_backtest(buy_table, tqqq, fx_dict, fx_sorted, seed_krw, use_vault, vault_krw_init, vault_trigger,
                  use_next_open=False, tqqq_open=None, use_dca=False, dca_amount_krw=0.0, dca_day=1,
-                 manual_buys=None, rebalance_band=0.05):
+                 manual_buys=None, rebalance_band=0.05,
+                 commission_rate=0.0, apply_tax=False, tax_rate=0.22, annual_deduction_krw=2_500_000):
     """
     현금풀/금고 원화 저장 방식 엔진.
     - 현금풀/금고 잔액은 원화로 고정 저장 → 환율 변동에 흔들리지 않음
@@ -45,7 +46,19 @@ def run_backtest(buy_table, tqqq, fx_dict, fx_sorted, seed_krw, use_vault, vault
     cash_krw = round(seed_krw * cash_ratio) + leftover_krw
     vault_krw = vault_krw_init if use_vault else 0
 
-    total_cash_pool_krw = cash_krw   # 비율 계산 기준 (초기값 고정)
+    # ── 수수료/세금 추적 ──
+    avg_cost_usd = prices[0]       # 평균매입단가 (달러, 이동평균법)
+    annual_gains_krw = {}          # {연도: 실현차익(원)} — 세금 계산 기준
+    total_commission_krw = 0
+    total_tax_krw = 0
+
+    # 초기 매수 수수료 (시드 70% 매입분)
+    if commission_rate > 0:
+        init_comm = round(tqqq_shares * prices[0] * start_fx * commission_rate)
+        cash_krw -= init_comm
+        total_commission_krw += init_comm
+
+    total_cash_pool_krw = cash_krw   # 비율 계산 기준 (초기값 고정, 수수료 차감 후)
     total_vault_krw = vault_krw      # 비율 계산 기준 (초기값 고정)
 
     # 단순홀딩 주수 (시드+금고 전액 투자 기준)
@@ -84,9 +97,24 @@ def run_backtest(buy_table, tqqq, fx_dict, fx_sorted, seed_krw, use_vault, vault
                 cash_krw = round(total_krw * cash_ratio) + leftover
                 if new_shares != old_shares:
                     action = '매수' if new_shares > old_shares else '매도'
+                    shares_diff = abs(new_shares - old_shares)
+                    # 수수료
+                    if commission_rate > 0:
+                        comm = round(shares_diff * price * fx * commission_rate)
+                        cash_krw -= comm
+                        total_commission_krw += comm
+                    # 매도 시 실현차익 누적 (세금 기준)
+                    if apply_tax and new_shares < old_shares:
+                        gain_usd = (price - avg_cost_usd) * shares_diff
+                        if gain_usd > 0:
+                            yr = date_str[:4]
+                            annual_gains_krw[yr] = annual_gains_krw.get(yr, 0) + round(gain_usd * fx)
+                    # 매수 시 평균단가 업데이트
+                    if apply_tax and new_shares > old_shares:
+                        avg_cost_usd = (avg_cost_usd * old_shares + price * shares_diff) / new_shares
                     rebalance_count += 1
                     rebalance_log.append({'date': date_str, 'price': round(price, 2), 'action': action,
-                                          'shares_diff': abs(new_shares - old_shares), 'shares_after': new_shares})
+                                          'shares_diff': shares_diff, 'shares_after': new_shares})
 
             # 신고가 → 레벨 리셋은 항상 (리밸런싱 여부와 무관)
             bought_levels = set()
@@ -107,8 +135,15 @@ def run_backtest(buy_table, tqqq, fx_dict, fx_sorted, seed_krw, use_vault, vault
                     buy_shares = math.floor(cash_krw / (buy_price * fx))
                 actual_cost_krw = round(buy_shares * buy_price * fx)
                 if buy_shares >= 1:
+                    prev_shares = tqqq_shares
                     tqqq_shares += buy_shares
                     cash_krw -= actual_cost_krw
+                    if commission_rate > 0:
+                        comm = round(actual_cost_krw * commission_rate)
+                        cash_krw -= comm
+                        total_commission_krw += comm
+                    if apply_tax:
+                        avg_cost_usd = (avg_cost_usd * prev_shares + buy_price * buy_shares) / tqqq_shares
                     buy_count += 1
                     buy_log.append({'date': date_str, 'price': round(buy_price, 2), 'mdd': round(mdd, 2),
                                     'level': level, 'shares': buy_shares, 'shares_total': tqqq_shares,
@@ -121,11 +156,20 @@ def run_backtest(buy_table, tqqq, fx_dict, fx_sorted, seed_krw, use_vault, vault
         if use_vault and vault_krw > 0 and not cash_drained:
             first_vault_triggered = any(mdd <= lvl for lvl, _ in vault_table)
             if first_vault_triggered:
-                drain_shares = math.floor(cash_krw / (buy_price * fx))
+                # 수수료를 고려해 매입 가능한 최대 주수 계산
+                unit_cost = buy_price * fx * (1 + commission_rate)
+                drain_shares = math.floor(cash_krw / unit_cost)
                 drain_cost_krw = round(drain_shares * buy_price * fx)
                 if drain_shares >= 1:
+                    prev_shares = tqqq_shares
                     tqqq_shares += drain_shares
                     cash_krw -= drain_cost_krw
+                    if commission_rate > 0:
+                        comm = round(drain_cost_krw * commission_rate)
+                        cash_krw -= comm
+                        total_commission_krw += comm
+                    if apply_tax:
+                        avg_cost_usd = (avg_cost_usd * prev_shares + buy_price * drain_shares) / tqqq_shares
                     buy_count += 1
                     buy_log.append({'date': date_str, 'price': round(buy_price, 2), 'mdd': round(mdd, 2),
                                     'level': -999, 'shares': drain_shares, 'shares_total': tqqq_shares,
@@ -145,8 +189,15 @@ def run_backtest(buy_table, tqqq, fx_dict, fx_sorted, seed_krw, use_vault, vault
                         buy_shares = math.floor(vault_krw / (buy_price * fx))
                     actual_cost_krw = round(buy_shares * buy_price * fx)
                     if buy_shares >= 1:
+                        prev_shares = tqqq_shares
                         tqqq_shares += buy_shares
                         vault_krw -= actual_cost_krw
+                        if commission_rate > 0:
+                            comm = round(actual_cost_krw * commission_rate)
+                            cash_krw -= comm
+                            total_commission_krw += comm
+                        if apply_tax:
+                            avg_cost_usd = (avg_cost_usd * prev_shares + buy_price * buy_shares) / tqqq_shares
                         vault_buy_count += 1
                         buy_log.append({'date': date_str, 'price': round(buy_price, 2), 'mdd': round(mdd, 2),
                                         'level': level, 'shares': buy_shares, 'shares_total': tqqq_shares,
@@ -161,7 +212,14 @@ def run_backtest(buy_table, tqqq, fx_dict, fx_sorted, seed_krw, use_vault, vault
                 buy_shares = math.floor(dca_amount_krw / (buy_price * fx))
                 actual_cost_krw = round(buy_shares * buy_price * fx)
                 if buy_shares >= 1:
+                    prev_shares = tqqq_shares
                     tqqq_shares += buy_shares
+                    if commission_rate > 0:
+                        comm = round(actual_cost_krw * commission_rate)
+                        cash_krw -= comm
+                        total_commission_krw += comm
+                    if apply_tax:
+                        avg_cost_usd = (avg_cost_usd * prev_shares + buy_price * buy_shares) / tqqq_shares
                     buy_count += 1
                     buy_log.append({'date': date_str, 'price': round(buy_price, 2), 'mdd': round(mdd, 2),
                                     'level': 0, 'shares': buy_shares, 'shares_total': tqqq_shares,
@@ -177,12 +235,30 @@ def run_backtest(buy_table, tqqq, fx_dict, fx_sorted, seed_krw, use_vault, vault
                     buy_shares = math.floor(mb['amount_krw'] / (buy_price * fx))
                     actual_cost_krw = round(buy_shares * buy_price * fx)
                     if buy_shares >= 1:
+                        prev_shares = tqqq_shares
                         tqqq_shares += buy_shares
+                        if commission_rate > 0:
+                            comm = round(actual_cost_krw * commission_rate)
+                            cash_krw -= comm
+                            total_commission_krw += comm
+                        if apply_tax:
+                            avg_cost_usd = (avg_cost_usd * prev_shares + buy_price * buy_shares) / tqqq_shares
                         buy_log.append({'date': date_str, 'price': round(buy_price, 2), 'mdd': round(mdd, 2),
                                         'level': 0, 'shares': buy_shares, 'shares_total': tqqq_shares,
                                         'cost_krw': actual_cost_krw, 'source': '사용자개입',
                                         'fx': round(fx, 2),
                                         'cash_after_krw': cash_krw, 'vault_after_krw': vault_krw})
+
+        # ── 연말 세금 처리 (다음 날이 새해 첫날이면 당해 세금 납부) ──
+        if apply_tax and i < len(dates) - 1:
+            if str(dates[i + 1].date())[:4] != date_str[:4]:
+                yr = date_str[:4]
+                gains = annual_gains_krw.get(yr, 0)
+                taxable = gains - annual_deduction_krw
+                if taxable > 0:
+                    tax = round(taxable * tax_rate)
+                    cash_krw -= tax
+                    total_tax_krw += tax
 
         # ── history 기록 (매주 월요일 + 마지막 날) ──
         total_krw = cash_krw + tqqq_shares * price * fx + vault_krw
@@ -192,10 +268,24 @@ def run_backtest(buy_table, tqqq, fx_dict, fx_sorted, seed_krw, use_vault, vault
                              'hold_krw': round(hold_shares * price * fx, 0),
                              'fx': round(fx, 2), 'cash_krw': cash_krw, 'vault_krw': vault_krw})
 
+    # ── 마지막 연도 미납 세금 처리 ──
+    if apply_tax:
+        final_yr = str(dates[-1].date())[:4]
+        gains = annual_gains_krw.get(final_yr, 0)
+        taxable = gains - annual_deduction_krw
+        if taxable > 0:
+            tax = round(taxable * tax_rate)
+            total_tax_krw += tax
+            if history:
+                history[-1] = dict(history[-1])
+                history[-1]['total_krw'] = round(history[-1]['total_krw'] - tax, 0)
+
     stats = {'buy_count': buy_count, 'vault_buy_count': vault_buy_count,
              'rebalance_count': rebalance_count,
              'total_tx': buy_count + vault_buy_count + rebalance_count,
-             'buy_log': buy_log, 'rebalance_log': rebalance_log}
+             'buy_log': buy_log, 'rebalance_log': rebalance_log,
+             'total_commission_krw': total_commission_krw,
+             'total_tax_krw': total_tax_krw}
     return history, stats
 
 
