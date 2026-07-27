@@ -1003,16 +1003,16 @@ if st.session_state.results and st.session_state.step >= 2:
         year_df = pd.DataFrame(year_data)
 
         def color_rate(val):
-            if val is None: return ''
+            if pd.isna(val): return ''
             color = 'rgba(46,204,113,0.3)' if val >= 0 else 'rgba(231,76,60,0.3)'
             return f'background-color: {color}'
 
         def fmt_rate(val):
-            if val is None: return '-'
+            if pd.isna(val): return '-'
             return f'{val:+.1f}%'
 
         numeric_cols = [c for c in year_df.columns if c != '연도']
-        styled = year_df.style.applymap(color_rate, subset=numeric_cols).format(fmt_rate, subset=numeric_cols)
+        styled = year_df.style.map(color_rate, subset=numeric_cols).format(fmt_rate, subset=numeric_cols)
         st.dataframe(styled, use_container_width=True, hide_index=True)
         st.caption('💡 초록: 수익 / 빨강: 손실 | 해당 연도 첫 거래일 대비 마지막 거래일 기준')
 
